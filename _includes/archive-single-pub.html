@@ -75,6 +75,8 @@
         <img src="{{ "joss.png" | prepend: "/images/journals/" | prepend: base_path }}" alt="">
 	  {% elsif post.venue == "Photonics" %}
         <img src="{{ "Photonics.png" | prepend: "/images/journals/" | prepend: base_path }}" alt="">
+	  {% elsif post.venue == "NAR Molecular Medicine" %}
+        <img src="{{ "nar.gif" | prepend: "/images/journals/" | prepend: base_path }}" alt="">
       {% else %}
         <img src="{{ "journal.png" | prepend: "/images/" | prepend: base_path }}" alt="">
       {% endif %}
