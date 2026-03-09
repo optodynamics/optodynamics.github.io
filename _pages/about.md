@@ -14,9 +14,9 @@ image_sliders:
 
 {::options parse_block_html="true" /}
 
-Welcome to the web page of the research line Optical investigation of Dynamical Systems.
+Welcome to the web page of the research line Optical investigation of Dynamical Systems at the Italian Institute of Technology, Genoa, Italy.
 
-Our mission
+<h1>Our mission</h1>
 
 Measuring the molecular dynamics and interactions of biomolecules in live cells is crucial for understanding cellular mechanisms. While recent advances in super-resolution fluorescence microscopy have enabled molecular-level resolution in fixed samples, capturing dynamics in live cells remains a major challenge. Conventional methods for studying molecular dynamics struggle with high fluorophore concentrations, photobleaching, and the need for extensive prior knowledge about the setup and sample. In addition, measuring the molecular diffusion properties without knowing the local viscosity complicates the study of anomalous diffusion dynamics.
 
