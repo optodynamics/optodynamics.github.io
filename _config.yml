@@ -7,12 +7,12 @@
 
 # Site Settings
 locale                   : "en-US"
-title                    : "Personal web page"
+title                    : "Optical investigation of Dynamical Systems"
 title2                    : "Start page"
 title_separator          : "-"
-name                     : &name "Personal web page"
-description              : &description "Eli Slenders - personal web page"
-url                      : https://eslenders.github.io # the base hostname & protocol for your site e.g. "https://mmistakes.github.io"
+name                     : &name "Research group web page"
+description              : &description "Slenders lab - research group web page"
+url                      : https://optodynamics.github.io # the base hostname & protocol for your site e.g. "https://mmistakes.github.io"
 #url                      : https://eslenders.github.io # the base hostname & protocol for your site e.g. "https://mmistakes.github.io"
 baseurl                  : "" # the subpath of your site, e.g. "/blog"
 repository               : "eslenders/eslenders.github.io"
@@ -57,7 +57,7 @@ yandex_site_verification :
 
 # Social Sharing
 twitter:
-  username               : &twitter VicidominiLab
+  username               : &twitter EliSlenders
 facebook:
   username               :
   app_id                 :
@@ -75,9 +75,9 @@ social:
 
 # Site Author
 author:
-  name             : "Eli Slenders"
+  name             : "Slenders lab"
   avatar           : "https://eslenders.github.io/images/EliSlenders.jpg"
-  bio              : "Marie Skłodowska-Curie Actions research fellow at the Italian Institute of Technology"
+  bio              : "Researcher Tenure Track - Principal Investigator at the Italian Institute of Technology"
   location         : "Genoa, Italy"
   employer         :
   googlescholar    : "https://scholar.google.com/citations?en=nl&user=BhJu6RMAAAAJ"
