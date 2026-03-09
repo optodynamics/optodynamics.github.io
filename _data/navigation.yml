@@ -39,8 +39,8 @@ main:
   #- title: "BrightEyes_ERC"
     #url: /brighteyes/
 
-  - title: "Lab@IIT"
-    url: https://www.iit.it/research/lines/molecular-microscopy-and-spectroscopy
+  #- title: "Lab@IIT"
+   # url: https://www.iit.it/research/lines/molecular-microscopy-and-spectroscopy
 
   #- title: "Lab@Crick"
   #  url: https://www.crick.ac.uk/partnerships/university-partnerships/our-university-attachments
