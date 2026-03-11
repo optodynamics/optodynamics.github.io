@@ -6,15 +6,15 @@ author_profile: true
 ---
 
 
-<h1>Postdoc position in the field of optical microscopy for measuring diffusion dynamics</h1>
+<h2>Postdoc position in the field of optical microscopy for measuring diffusion dynamics</h2>
 
-<h2>Commitment & contract:</h2>
+<h3>Commitment & contract:</h3>
 24 months (+12 renewable)
 
-<h2>Location:</h2>
+<h3>Location:</h3>
 IIT CHT Erzelli, Genoa, Italy
 
-<h2>Your role</h2>
+<h3>Your role</h3>
 You will be working in a multicultural and multi-disciplinary environment, where junior and senior scientists collaborate, each with their expertise, to carry out a scientific activity with a shared research goal. The Optical Investigation of Dynamical Systems research line was established in 2026 by Eli Slenders, following the award of an ERC starting grant. The research focuses on the development of optical microscopy systems for measuring molecular diffusion and biomechanical properties in biological systems. This includes designing custom-built optical microscopes, developing control software, and building data analysis pipelines to extract quantitative information from dynamic samples.
 
 Within the research team, your main responsibilities will be:
@@ -24,7 +24,7 @@ Within the research team, your main responsibilities will be:
 •	Proof-of-principle FFS measurements on various test samples
 •	Support the supervision of a PhD student
 
-<h2>Essential requirements</h2>
+<h3>Essential requirements</h3>
 •	A PhD in physics, biophysics, engineering or a related discipline
 •	Documented experience in aligning optical microscopes
 •	Strong publication record
@@ -32,12 +32,12 @@ Within the research team, your main responsibilities will be:
 •	The successful candidate should have good practice with teamwork and a problem-solving attitude.
 •	Good command of spoken and written English
 
-<h2>Additional skills</h2>
+<h3>Additional skills</h3>
 •	Strong motivation to contribute to the establishment and growth of a new research line
 •	Experience with programming in LabVIEW and/or Python
 •	Ability to work in a challenging and international environment
 
-<h2>Compensation package</h2>
+<h3>Compensation package</h3>
 •	A yearly gross salary of 35.000 EUR
 •	Private health care coverage depending on your role and contract
 •	Candidates from abroad or Italian citizens who have carried scientific research activity permanently abroad and meet specific requirements, may be entitled to a deduction from taxable income of up to 90% from 6 to 13 years.
@@ -52,15 +52,15 @@ Application’s deadline: The position will remain open until filled.
 
 
 
-<h1>Pre-Doctoral Position in the field of software engineering for the analysis of optical microscopy and spectroscopy data</h1>
+<h2>Pre-Doctoral Position in the field of software engineering for the analysis of optical microscopy and spectroscopy data</h2>
 
-<h2>Commitment & contract:</h2>
+<h3>Commitment & contract:</h3>
 6 months 
 
-<h2>Location:</h2>
+<h3>Location:</h3>
 IIT CHT Erzelli, Genoa, Italy
 
-<h2>Your role</h2>
+<h3>Your role</h3>
 You will be working in a multicultural and multi-disciplinary environment, where junior and senior scientists collaborate, each with their expertise, to carry out a scientific activity with a shared research goal.
 
 The Optical Investigation of Dynamical Systems research line was established in 2026 by Eli Slenders, following the award of an ERC starting grant. The research focuses on the development of optical microscopy systems for measuring molecular diffusion and biomechanical properties in biological systems. This includes designing custom-built optical microscopes, developing control software, and building data analysis pipelines to extract quantitative information from dynamic samples.
@@ -71,7 +71,7 @@ This fellowship is a software-engineering role with a strong focus on scientific
 •	implementation of a data analysis framework for robust, autonomous, and real-time data evaluation for FFS
 
 
-<h2>Essential requirements</h2>
+<h3>Essential requirements</h3>
 •	A Master’s degree in Computer Science, physics, mathematics, engineering or a related discipline
 •	Strong Python skills
 •	Experience with modern deep-learning architectures
@@ -79,12 +79,12 @@ This fellowship is a software-engineering role with a strong focus on scientific
 •	The successful candidate should have good practice with teamwork and a problem-solving attitude.
 •	Good command of spoken and written English
 
-<h2>Additional skills</h2>
+<h3>Additional skills</h3>
 •	Strong motivation to contribute to the establishment and growth of a new research line
 •	Ability to work in a challenging and international environment
 •	Interest in optics and microscopy but no prior experience required
 
-<h2>Compensation package</h2>
+<h3>Compensation package</h3>
 •	Competitive salary package
 
 
