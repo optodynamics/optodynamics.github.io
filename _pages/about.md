@@ -24,7 +24,7 @@ The overall goal of the lab is the development of a platform based on optical mi
 
 <body align="justify">
 
-<figure style="width: 20%" class="align-center-custom">
+<figure style="width: 15%" class="align-center-custom">
 <img src='/images/logo_motionpicture.png'>
 </figure>
 <figure style="width: 20%" class="align-center-custom">
