@@ -5,7 +5,7 @@ permalink: /positions/
 author_profile: true
 ---
 
-Spontaneous applications are welcomed! Send an email with a detailed CV, university transcripts, cover letter outlining motivation, experience, and qualifications and contact details of 2 references.
+Apart from the open positions below, also spontaneous applications are welcomed! Send an email with a detailed CV, university transcripts, cover letter outlining motivation, experience, and qualifications and contact details of 2 references.
 
 <h2>Postdoc position in the field of optical microscopy for measuring diffusion dynamics</h2>
 
