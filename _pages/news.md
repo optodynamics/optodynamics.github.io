@@ -6,7 +6,7 @@ author_profile: true
 tweets:
 ---
 
-<p>March 2026: RAI television reporting on the BrightMind and MotionPicture projects</p>
+<p>March 2026: RAI television reporting on the BrightMind and MotionPicture projects.</p>
 
 <video controls width="520">
     <source src="../videos/rainews2026_motionpicture2.mp4">
