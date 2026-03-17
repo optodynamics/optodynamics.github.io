@@ -49,7 +49,7 @@ Please submit your application using the online form and including a detailed CV
 
 Application’s deadline: The position will remain open until filled.
 
-
+Apply <a href="https://app.ncoreplat.com/jobposition/786452/postdoc-position-in-the-field-of-optical-microscopy-for-measuring-diffusion-dynamics-it/istituto-italiano-di-tecnologia">here</a>.
 
 
 
@@ -97,6 +97,7 @@ Application’s deadline: The position will remain open until March 31st, 2026.
 
 To discover more about life at IIT, visit the dedicated section here: https://www.iit.it/en/work-at-iit 
 
+Apply <a href="https://app.ncoreplat.com/jobposition/786449/fellow-position-in-the-field-of-software-engineering-for-the-analysis-of-optical-microscopy-and-spectroscopy-data-it/istituto-italiano-di-tecnologia">here</a>.
 
 
 
