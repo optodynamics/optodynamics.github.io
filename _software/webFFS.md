@@ -1,8 +1,8 @@
 ---
-title: "Fluorescence Correlation Spectroscopy"
-type: FCS
+title: "Software"
+type: Software
 collection: research
-date: 2021-01-01
+date: 2026-01-01
 author_profile: false
 sidebar:
   nav: "Tech"
