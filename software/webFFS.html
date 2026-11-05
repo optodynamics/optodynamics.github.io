@@ -248,11 +248,29 @@
     .file-tabs {
       padding: 10px;
       border-bottom: 1px solid var(--line);
-    }
-
-    .file-tabs .tab-button {
-      flex: 1 1 0;
       min-width: 0;
+      align-items: flex-start;
+    }
+    .file-tabs > .nav-button, .file-tabs > .tool-button { margin-top: 2px; }
+    .file-tabs.is-empty #previousFileButton,
+    .file-tabs.is-empty #nextFileButton,
+    .file-tabs.is-empty #fileTabList { display: none; }
+
+    .file-tab-list {
+      display: flex;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 52px;
+      align-items: flex-start;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      padding: 2px 1px 12px;
+    }
+    .file-tabs .tab-button {
+      flex: 0 0 auto;
+      max-width: 180px;
+      font-weight: 400;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -278,6 +296,11 @@
 
     .file-location strong { font-size: .82rem; }
     .file-location span { margin-top: 2px; color: var(--soft); font-size: .7rem; }
+    .file-name-row { display: flex; align-items: center; min-width: 0; }
+    .file-name-row strong { min-width: 0; }
+    #favouriteButton { border: 0; background: transparent; color: #c99516; cursor: pointer; font-size: 1.2rem; padding: 0 5px 0 0; flex: none; }
+    .tab-button.is-favourite, .tab-button.is-favourite:hover { border-color: #caa354; }
+    .tab-button.is-favourite:not(.is-active) { box-shadow: inset 0 0 0 .5px #caa354; }
 
     .compact-input {
       width: 104px !important;
@@ -285,6 +308,9 @@
       padding: 6px 8px !important;
       font-size: .77rem;
     }
+    #xCoordInput, #yCoordInput { width: 50px !important; flex: 0 0 50px; }
+    #imageNameButton, #newFileButton, #saveLabelButton { font-weight: 400; }
+    #newFileButton { flex: 0 0 auto; white-space: nowrap; }
 
     .tool-button,
     .tab-button,
@@ -308,10 +334,17 @@
       transform: translateY(-1px);
     }
 
-    .tab-button.is-active {
-      border-color: rgba(77, 224, 208, .68);
-      color: #062b27;
-      background: var(--cyan);
+    .tab-button.is-active, .tool-button.is-active {
+      border-color: #4289bb;
+      box-shadow: inset 0 0 0 1px #4289bb;
+      color: #163f59;
+      background: linear-gradient(135deg, #dff2fa, #bedff1);
+    }
+    .tab-button.is-active.is-favourite {
+      border-color: #caa354;
+      box-shadow: inset 0 0 0 1px #caa354;
+      color: #58410e;
+      background: linear-gradient(135deg, #fff4d3, #ead294);
     }
 
     .nav-button {
@@ -344,8 +377,8 @@
     .fcs-file-content {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      gap: 13px;
-      padding: 0 13px 13px;
+      gap: 8px;
+      padding: 0 13px 10px;
     }
 
     .fcs-file-content > .panel-body { padding: 0; }
@@ -367,7 +400,7 @@
       gap: 13px;
     }
     .fcs-file-content > .middle-monitor > .panel { min-width: 0; width: auto; }
-    .fcs-file-content > .middle-monitor > .panel:first-child { flex: 3 1 0; }
+    .fcs-file-content > .middle-monitor > .panel:first-child { flex: 4 1 0; }
     .fcs-file-content > .middle-monitor > .panel:last-child { flex: 1 1 0; }
 
     .right-sidebar {
@@ -508,15 +541,18 @@
       margin-top: 14px;
     }
 
-    .chunks-panel .panel-heading { padding-bottom: 8px; border-bottom: 0; }
-    .chunks-panel .panel-body { padding-top: 10px; }
-    .chunks-panel .control-grid { grid-template-columns: 88px 134px 98px minmax(94px, 1fr) minmax(84px, 1fr); gap: 7px; align-items: end; }
-    .chunks-panel #chunkNumberInput { max-width: 88px; }
-    .chunks-panel #showChunksCorrSelect { max-width: 134px; }
+    .middle-monitor .chunks-panel { border: 0; border-radius: 0; box-shadow: none; background: transparent; margin-top: 7px; }
+    .middle-monitor .chunks-panel .panel-heading { display: none; }
+    .middle-monitor .chunks-panel .panel-body { padding: 0; }
+    .chunks-panel .control-grid { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; }
+    .chunks-panel .control-grid > label { flex: 0 1 auto; min-width: 0; }
+    .chunks-panel #chunkNumberInput { width: 66px; min-height: 32px; padding: 5px 6px; }
+    .chunks-panel #showChunksCorrSelect { width: 118px; min-height: 32px; padding: 5px 6px; }
+    .chunks-panel .control-grid > label > span { font-size: .7rem; margin-bottom: 3px; }
     .chunks-panel .check-label { line-height: 1.1; }
     .chunks-panel .control-grid > .tool-button { min-height: 32px; padding: 6px 7px; font-size: .7rem; white-space: nowrap; }
     #diffusionPlotWrap {
-      margin-top: 28px;
+      margin-top: 14px;
       padding-top: 0;
       min-height: 0;
       border-top: 1px solid var(--line);
@@ -758,7 +794,9 @@
     option:hover,
     option:checked {
       color: #f4ffff;
-      background: #285e65;
+      background-color: #285e65;
+      background-image: linear-gradient(#285e65, #285e65);
+      box-shadow: inset 0 0 0 100px #285e65;
     }
 
     .correlation-parameters {
@@ -1048,7 +1086,7 @@
       background: #09131e;
     }
 
-    #correlationCanvas { display: block; width: 100%; max-width: 100%; height: 420px; cursor: crosshair; }
+    #correlationCanvas { display: block; width: 100%; max-width: 100%; height: 500px; cursor: crosshair; }
 
     canvas {
       display: block;
@@ -1423,6 +1461,14 @@
       color: var(--ink);
       background: rgba(255, 255, 255, .84);
     }
+    html[data-theme="light"] .tab-button.is-active, html[data-theme="light"] .tool-button.is-active {
+      color: #163f59;
+      background: linear-gradient(135deg, #e5f5fc, #bbdeef);
+    }
+    html[data-theme="light"] .tab-button.is-active.is-favourite {
+      color: #58410e;
+      background: linear-gradient(135deg, #fff7df, #ead294);
+    }
 
     html[data-theme="light"] .callout p,
     html[data-theme="light"] .panel,
@@ -1484,7 +1530,7 @@
     <div class="desktop-workspace">
       <aside class="left-sidebar" aria-label="Image, notes, and status panels">
         <section class="panel" aria-labelledby="imageControlsHeading">
-          <div class="panel-heading"><h2 id="imageControlsHeading">Image</h2><span class="subtle">desktop panel</span></div>
+          <div class="panel-heading"><h2 id="imageControlsHeading">Image</h2></div>
           <div class="panel-body">
             <div class="image-preview" id="imagePreview">Image preview appears here</div>
             <div class="image-nav">
@@ -1502,17 +1548,14 @@
       </aside>
 
     <section class="desktop-strip" aria-label="FFS file navigation and metadata">
-      <div class="file-tabs">
+      <div class="file-tabs is-empty">
         <button class="nav-button" id="previousFileButton" type="button" data-python-handler="previous_file" aria-label="Previous FFS file">‹</button>
-        <button id="newFileButton" class="tab-button is-active" type="button" data-python-handler="activate_ffs_file" data-file-index="0">New file</button>
-        <button class="tab-button" type="button" data-python-handler="activate_ffs_file" data-file-index="1" disabled>File 2</button>
-        <button class="tab-button" type="button" data-python-handler="activate_ffs_file" data-file-index="2" disabled>File 3</button>
-        <button class="tab-button" type="button" data-python-handler="activate_ffs_file" data-file-index="3" disabled>File 4</button>
-        <button class="tab-button" type="button" data-python-handler="activate_ffs_file" data-file-index="4" disabled>File 5</button>
+        <div id="fileTabList" class="file-tab-list" role="tablist" aria-label="Files for current image"></div>
         <button class="nav-button" id="nextFileButton" type="button" data-python-handler="next_file" aria-label="Next FFS file">›</button>
+        <button id="newFileButton" class="tool-button is-active" type="button" data-python-handler="activate_ffs_file" data-file-index="0">New file</button>
       </div>
       <div class="file-details">
-        <div class="file-location"><strong><button id="favouriteButton" type="button" aria-label="Mark file as favourite" aria-pressed="false" disabled style="border:0;background:transparent;color:inherit;cursor:pointer;font-size:1.2em;padding:0 5px 0 0">☆</button><span id="fcsFileTitle">My FCS File</span></strong><input id="sourceFolderInput" class="compact-input" type="text" placeholder="Folder unavailable — enter manually" aria-label="Original file folder" title="Browsers do not provide the original folder. Enter it here if you want to save it."></div>
+        <div class="file-location"><div class="file-name-row"><button id="favouriteButton" type="button" aria-label="Mark file as favourite" title="Mark as favourite" aria-pressed="false" disabled>☆</button><strong id="fcsFileTitle">My FCS File</strong></div></div>
         <input id="labelInput" class="compact-input" type="text" value="Label" aria-label="File label">
         <input id="yCoordInput" class="compact-input" type="text" value="Y" aria-label="Y coordinate">
         <input id="xCoordInput" class="compact-input" type="text" value="X" aria-label="X coordinate">
@@ -1632,12 +1675,12 @@
             <label class="wide"><span>Fit model</span><select id="fitModel"><option value="free-diffusion-1">Free diffusion 1 component</option></select></label>
           </div>
           <div class="fit-range-row">
-            <label><span>Start point</span><input id="fitStart" type="number" min="1" step="1" value="1"></label>
-            <label><span>Stop point</span><input id="fitStop" type="number" min="0" step="1" value="0"></label>
+            <label title="Start point 1 excludes zero lag"><span>Start point</span><input id="fitStart" type="number" min="1" step="1" value="1" title="Start point 1 excludes zero lag"></label>
+            <label title="Stop is exclusive and 0 uses the final point"><span>Stop point</span><input id="fitStop" type="number" min="0" step="1" value="0" title="Stop is exclusive and 0 uses the final point"></label>
             <button id="fitUseView" class="tool-button" type="button" title="Use the lag-time limits currently visible in the correlation plot">From plot</button>
           </div>
           <div id="fitParameterFields" class="fit-parameter-list"></div>
-          <p id="fitSummary" class="timing-note">Start point 1 excludes the zero-lag point; stop is exclusive. Stop 0, or a value beyond the trace, uses the final available point.</p>
+          <p id="fitSummary" class="timing-note" hidden></p>
           <div class="placeholder-actions"><button class="tool-button" type="button" data-python-handler="overwritefit">Overwrite fit</button><button class="tool-button" type="button" data-python-handler="newfit">New fit</button></div>
         </div>
       </section>
@@ -1684,7 +1727,7 @@
       </section>
 
       <section class="panel" aria-labelledby="fingerprintControlsHeading">
-        <div class="panel-heading"><h2 id="fingerprintControlsHeading">Fingerprint analysis</h2><span class="subtle">desktop panel</span></div>
+        <div class="panel-heading"><h2 id="fingerprintControlsHeading">Fingerprint analysis</h2></div>
         <div class="panel-body">
           <div class="placeholder-actions">
             <button class="tool-button" type="button" data-python-handler="show_fingerprint">Photons</button>
@@ -1705,15 +1748,12 @@
         <button class="tool-button" type="button" data-python-handler="change_image_file">Change image</button>
         <button class="tool-button" type="button" data-python-handler="open_session">Open session</button>
         <button class="tool-button" type="button" data-python-handler="save_session">Save session (.ffs)</button>
-        <button class="tool-button" type="button" data-python-handler="new_session">New session</button>
-        <button class="tool-button" type="button" data-python-handler="calc_corr_all_files">All correlations in joblist</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_fit">Remove current fit</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_analysis">Remove current correlation</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_ffs_file">Current FFS file</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_image">Current image</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
         <button class="tool-button" type="button" data-python-handler="copy_current_correlation">Copy current correlation</button>
-        <button class="tool-button" type="button" data-python-handler="filter_out_bad_chunks">Filter out bad chunks</button>
         <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Create Jupyter Notebook</button>
         <button class="tool-button" type="button" data-python-handler="plot_jupyter_notebook">Plot in Jupyter Notebook</button>
         <button class="tool-button" type="button" data-python-handler="export_session_xlsx">Export results to Excel</button>
@@ -1737,7 +1777,6 @@
             <h2 id="resultHeading">Correlation</h2>
             <p id="resultDescription">—</p>
           </div>
-          <span id="resultMode" class="pill">—</span>
         </div>
 
         <div class="plot-wrap">
@@ -1746,7 +1785,6 @@
         <div id="diffusionPlotWrap" class="plot-wrap" hidden>
           <canvas id="diffusionCanvas" aria-label="Diffusion time versus beam waist squared chart"></canvas>
         </div>
-        <p id="plotCaption" class="plot-caption">Lag time is shown on a logarithmic axis; the zero-lag point is omitted from the plot.</p>
 
       </div>
     </section>
@@ -2063,17 +2101,17 @@ def _desktop_crosscorrelation_params(det_type='Square 5x5'):
         avList = [avList[i] for i in range(len(avList)) if i not in idx_empty]
         listOfX = [listOfX[i] for i in range(len(listOfX)) if i not in idx_empty]
         listOfY = [listOfY[i] for i in range(len(listOfY)) if i not in idx_empty]
-
+        
         avListStr = []
         for avSingleDist in avList:
             avstr = ''
             for j in avSingleDist:
                 avstr += str(j[0]) + 'x' + str(j[1]) + '+'
             avListStr.append(avstr[0:-1])
-
+            
         elements = ['V'+str(listOfY[i])+'_H'+str(listOfX[i]) for i in range(len(listOfX))]
         average = avListStr
-
+    
     elif det_type == 'PDA-23':
         elements = []
         for angle in [0, 60, 120, 180, 240, 300]:
@@ -2092,7 +2130,7 @@ def _desktop_crosscorrelation_params(det_type='Square 5x5'):
                    '17x12+22x17+16x11+21x16+26x21+15x10+20x15+25x20+30x25+19x14+24x19+29x24+23x18+28x23',
                    '22x12+21x11+26x16+20x10+25x15+30x20+24x14+29x19+28x18'
                    ]
-
+    
     elif det_type == 'Airyscan 32':
         elements = []
         for angle in [0, 60, 120, 180, 240, 300]:
@@ -2123,21 +2161,21 @@ def _desktop_crosscorrelation_params(det_type='Square 5x5'):
         avList = [avList[i] for i in range(len(avList)) if i not in idx_empty]
         listOfX = [listOfX[i] for i in range(len(listOfX)) if i not in idx_empty]
         listOfY = [listOfY[i] for i in range(len(listOfY)) if i not in idx_empty]
-
+        
         avListStr = []
         for avSingleDist in avList:
             avstr = ''
             for j in avSingleDist:
                 avstr += str(j[0]) + 'x' + str(j[1]) + '+'
             avListStr.append(avstr[0:-1])
-
+            
         elements = ['V'+str(listOfY[i])+'_H'+str(listOfX[i]) for i in range(len(listOfX))]
         average = avListStr
-
+    
     listOfG = ['crossAll']
     mode = 'All cross-correlations'
     shortlabel = 'Crosscorrs'
-
+    
     return {
         "mode"       : mode,
         "elements"   : elements,
@@ -3304,7 +3342,8 @@ def _fit_browser_model_single(payload_json):
     start = min(requested_start, max(stop - 1, 1))
     tau_fit, g_fit = tau_all[start:stop], g_all[start:stop]
     valid = np.isfinite(tau_fit) & np.isfinite(g_fit) & (tau_fit > 0)
-    tau_fit, g_fit = tau_fit[valid], g_fit[valid]
+    if not np.all(valid):
+        raise ValueError("The selected fit range contains non-finite values or non-positive lag times. Choose a valid range.")
     if tau_fit.size < 4: raise ValueError("Choose at least four finite, positive-lag points for fitting.")
     initial = np.asarray(payload.get("initial", model["defaults"]), dtype=float)
     if initial.size != len(model["params"]) or not np.all(np.isfinite(initial)):
@@ -3317,7 +3356,12 @@ def _fit_browser_model_single(payload_json):
     if requested_fittable.size != desktop_fittable.size:
         raise ValueError("Fit-parameter checkbox state does not match the selected model.")
     variable = desktop_fittable & requested_fittable
-    initial = np.minimum(np.maximum(initial, lower + 1e-12), upper - 1e-12)
+    # Fixed parameters must retain the values the user entered. For fitted
+    # parameters, use representable interior bounds without adding an
+    # absolute epsilon that can overwhelm small physical bounds.
+    lower_inside = np.nextafter(lower[variable], np.inf)
+    upper_inside = np.nextafter(upper[variable], -np.inf)
+    initial[variable] = np.minimum(np.maximum(initial[variable], lower_inside), upper_inside)
     optimized = initial.copy()
     if np.any(variable):
         indices = np.asarray(model["used"], dtype=int)
@@ -3555,7 +3599,7 @@ def _browser_file_metadata(ffs_file):
         "channels": getattr(metadata, "num_channels", None),
         "dwell_us": getattr(metadata, "time_resolution", None),
         "duration_s": getattr(metadata, "duration", None),
-        "coords": getattr(metadata, "coords", None),
+        "coords": np.asarray(metadata.coords).tolist() if getattr(metadata, "coords", None) is not None else None,
     }
 
 
@@ -3567,13 +3611,13 @@ def _browser_file_view(ffs_file, index):
             fit_records = [analysis.browser_fit]
         analyses_detail.append({
             "index": analysis_index,
+            "summary": analysis.analysis_summary(),
             "fits": [{"index": fit_index, "model": fit.get("model", "Fit")}
                      for fit_index, fit in enumerate(fit_records)],
         })
     return {
         "index": index,
         "name": ffs_file.fname or ("File " + str(index + 1)),
-        "source_folder": getattr(ffs_file, "browser_source_folder", ""),
         "favourite": bool(getattr(ffs_file, "mark_as_favourite", False)),
         "label": ffs_file.label or ("File " + str(index + 1)),
         "metadata": _browser_file_metadata(ffs_file),
@@ -3584,7 +3628,7 @@ def _browser_file_view(ffs_file, index):
         "selected_tcspc_channel": getattr(ffs_file, "browser_selected_tcspc_channel", None),
         "rows_preview": getattr(ffs_file, "browser_rows_preview", None),
         "preview": getattr(ffs_file, "browser_preview", None),
-        "loaded": bool(getattr(ffs_file, "browser_input_path", None)),
+        "loaded": bool(getattr(ffs_file, "browser_input_path", None) or getattr(ffs_file, "browser_restored", False)),
         "has_result": isinstance(getattr(ffs_file, "browser_result", None), dict),
         "has_fit": isinstance(getattr(ffs_file, "browser_fit", None), dict),
         "analyses": ffs_file.num_analyses,
@@ -3621,26 +3665,29 @@ def _browser_view():
     }
 
 
+def _browser_json_default(value):
+    """Convert NumPy/HDF5 values returned by the desktop session reader."""
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _browser_response(message, **extra):
     response = {"message": message, "view": _browser_view()}
     response.update(extra)
-    return json.dumps(response, allow_nan=False)
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
 
 
 def browser_toggle_favourite():
     ffs_file = _browser_current_file()
-    if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
+    if ffs_file is None or not (getattr(ffs_file, "browser_input_path", None) or getattr(ffs_file, "browser_restored", False)):
         raise ValueError("Load a file first.")
     ffs_file.mark_as_favourite = not bool(getattr(ffs_file, "mark_as_favourite", False))
     return _browser_response("Favourite updated.")
-
-
-def browser_set_source_folder(folder):
-    ffs_file = _browser_current_file()
-    if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
-        raise ValueError("Load a file first.")
-    ffs_file.browser_source_folder = str(folder or "").strip()
-    return _browser_response("File folder updated.")
 
 
 def _browser_append_file(name=""):
@@ -3731,7 +3778,6 @@ def _browser_result_to_analysis(ffs_file, result, values, analysis=None, native_
     analysis = analysis or _browser_active_analysis(ffs_file)
     if analysis is None:
         analysis = _browser_add_analysis(ffs_file, values)
-    analysis.mode = result.get("mode", analysis.mode)
     analysis.settings.algorithm = values.get("algorithm", "multipletau")
     analysis.settings.resolution = _browser_int(values.get("lagInput"), 16)
     analysis.settings.chunksize = _browser_number(values.get("chunkSizeInput"), 1.0)
@@ -3749,12 +3795,40 @@ def _browser_result_to_analysis(ffs_file, result, values, analysis=None, native_
     ffs_file.browser_result = result
     ffs_file.browser_chunk_source = result
     ffs_file.browser_active_fit_index = None
+    chunks = result.get("chunks", [])
+    count = len(chunks[0]) if chunks and chunks[0] else 0
+    if count:
+        analysis.settings.chunks_off = np.ones(count, dtype=int)
+        ffs_file.browser_active_chunks = [True] * count
+        ffs_file.browser_selected_chunk = 0
     return analysis
 
 
 def _browser_active_analysis(ffs_file=None):
     ffs_file = ffs_file or _browser_current_file()
     return ffs_file.get_analysis() if ffs_file is not None else None
+
+
+def _browser_analysis_preview(ffs_file, analysis):
+    """Attach the selected analysis's own chunk geometry to the trace."""
+    preview = dict(getattr(ffs_file, "browser_preview", {}) or {})
+    preview.pop("chunk", None)
+    duration = _browser_number(getattr(ffs_file.metadata, "duration", None), None)
+    if duration and duration > 0:
+        preview["duration_s"] = duration
+    source = getattr(analysis, "browser_chunk_source", None) if analysis is not None else None
+    chunks = source.get("chunks", []) if isinstance(source, dict) else []
+    count = len(chunks[0]) if chunks and chunks[0] else 0
+    if count:
+        mask = np.ravel(getattr(analysis.settings, "chunks_off", np.ones(count))).astype(bool).tolist()
+        if len(mask) != count or not any(mask): mask = [True] * count
+        selected = min(max(int(getattr(ffs_file, "browser_selected_chunk", 0) or 0), 0), count - 1)
+        ffs_file.browser_selected_chunk = selected
+        ffs_file.browser_active_chunks = mask
+        preview["chunk"] = {"index": selected, "count": count, "enabled": mask[selected],
+                            "enabled_chunks": mask, "duration_s": _browser_number(analysis.settings.chunksize, None)}
+    ffs_file.browser_preview = preview
+    return preview
 
 
 def _browser_fit_value_column(value, default, number_of_curves, parameter_name):
@@ -3870,7 +3944,6 @@ def browser_load_data_file(input_path, fname):
     ffs_file = _browser_active_or_new_file()
     _browser_reset_loaded_file(ffs_file)
     ffs_file.fname = str(fname)
-    ffs_file.browser_source_folder = ""
     ffs_file.mark_as_favourite = False
     if not ffs_file.label or ffs_file.label.startswith("File "):
         ffs_file.label = str(fname)
@@ -4118,14 +4191,17 @@ def activate_ffs_file(payload=None):
     if 0 <= index < image.num_files:
         image.active_ffs = index
         current_file = _browser_current_file()
+        preview = _browser_analysis_preview(current_file, _browser_active_analysis(current_file))
         response_data = json.loads(_browser_response(
             "Selected " + (current_file.label or current_file.fname) + "."
         ))
         # Every visual panel is file-specific.  Return its cached lightweight
         # preview, correlation, and currently selected fit when changing tab.
-        preview = getattr(current_file, "browser_preview", None)
         if isinstance(preview, dict):
             response_data["preview"] = preview
+            if preview.get("chunk"):
+                response_data.update(active_chunks=preview["chunk"]["enabled_chunks"],
+                                     selected_chunk=preview["chunk"]["index"], chunk_count=preview["chunk"]["count"])
         result = getattr(current_file, "browser_result", None)
         if isinstance(result, dict):
             response_data["result"] = result
@@ -4138,8 +4214,8 @@ def activate_ffs_file(payload=None):
                 response_data["fit"] = fit_records[int(fit_index)]
         else:
             response_data["clear_result"] = True
-        return json.dumps(response_data, allow_nan=False)
-    if index > image.num_files or index >= 5:
+        return json.dumps(response_data, allow_nan=False, default=_browser_json_default)
+    if index < 0 or index > image.num_files:
         return _browser_response("No FFS file exists in that tab.")
     _browser_pending_file_index = index
     return _browser_response("Choose an H5 count-data file.", browser_action="request_data_file")
@@ -4230,7 +4306,17 @@ def show_analysis(payload=None):
     analysis = ffs_file.get_analysis(selected)
     result = getattr(analysis, "browser_result", None)
     ffs_file.browser_result = result
+    ffs_file.browser_chunk_source = getattr(analysis, "browser_chunk_source", result)
+    chunks = result.get("chunks", []) if isinstance(result, dict) else []
+    if chunks and chunks[0]:
+        count = len(chunks[0])
+        mask = np.ravel(getattr(analysis.settings, "chunks_off", np.ones(count))).astype(bool).tolist()
+        ffs_file.browser_active_chunks = mask if len(mask) == count and any(mask) else [True] * count
     ffs_file.browser_active_fit_index = None
+    preview = _browser_analysis_preview(ffs_file, analysis)
+    chunk_response = json.loads(show_chunks_corr_change(payload)) if chunks and chunks[0] else None
+    if chunk_response is not None:
+        result = chunk_response.get("result", result)
     if parts[0] == "fit" and len(parts) > 2:
         fit_index = _browser_int(parts[2], -1)
         fit_records = list(getattr(analysis, "browser_fits", []))
@@ -4243,12 +4329,17 @@ def show_analysis(payload=None):
             fit = fit_records[fit_index]
             ffs_file.browser_fit = fit
             ffs_file.browser_active_fit_index = fit_index
-            return _browser_response("Selected fit " + str(fit_index + 1) + " for correlation " + str(selected + 1) + ".", result=result, fit=fit)
+            if chunk_response is not None:
+                chunk_response.update(message="Selected fit " + str(fit_index + 1) + ".", fit=fit, view=_browser_view())
+                return json.dumps(chunk_response, allow_nan=False, default=_browser_json_default)
+            return _browser_response("Selected fit " + str(fit_index + 1) + ".", result=result, fit=fit, preview=preview)
         return _browser_response("That fit is not available for this correlation.")
     ffs_file.browser_fit = getattr(analysis, "browser_fit", None)
     if result is None:
-        return _browser_response("Selected correlation " + str(selected + 1) + "; it has not been calculated yet.")
-    return _browser_response("Selected correlation " + str(selected + 1) + ".", result=result)
+        return _browser_response("Selected correlation " + str(selected + 1) + "; it has not been calculated yet.", preview=preview, clear_result=True)
+    if chunk_response is not None:
+        return json.dumps(chunk_response, allow_nan=False, default=_browser_json_default)
+    return _browser_response("Selected correlation " + str(selected + 1) + ".", result=result, preview=preview)
 
 
 def show_elements(payload=None):
@@ -4342,6 +4433,11 @@ def show_chunks_corr_change(payload=None, message=None):
     if not any(active):
         active[selected] = True
     ffs_file.browser_active_chunks = active
+    analysis = _browser_active_analysis(ffs_file)
+    if analysis is not None:
+        analysis.settings.chunks_off = np.asarray(active, dtype=int)
+        if getattr(analysis, "corrs", None) is not None:
+            analysis.corrs.good_chunks = [i for i, enabled in enumerate(active) if enabled]
 
     output = dict(source)
     tau_traces, g_traces = [], []
@@ -4353,9 +4449,7 @@ def show_chunks_corr_change(payload=None, message=None):
     output["tau_s"] = tau_traces if len(tau_traces) > 1 else tau_traces[0]
     output["g"] = g_traces if len(g_traces) > 1 else g_traces[0]
     ffs_file.browser_result = output
-    preview = dict(getattr(ffs_file, "browser_preview", {}) or {})
-    preview["chunk"] = {"index": selected, "count": count, "enabled": bool(active[selected]), "enabled_chunks": list(active)}
-    ffs_file.browser_preview = preview
+    preview = _browser_analysis_preview(ffs_file, analysis)
     return _browser_response(message or ("Showing " + ("chunk " + str(selected + 1) if mode == "current" else "average of good chunks") + "."), result=output, preview=preview, active_chunks=active, selected_chunk=selected, chunk_count=count)
 
 
@@ -4507,9 +4601,7 @@ def add_corr_and_calc(payload=None):
         _browser_set_tcspc_metadata(ffs_file)
     analysis = _browser_add_analysis(ffs_file, values)
     result = _browser_calculate_file(ffs_file, values, analysis=analysis)
-    response = {"result": result}
-    if getattr(ffs_file, "browser_data_kind", "time_trace") == "time_trace":
-        response["preview"] = json.loads(preview_count_data(ffs_file.browser_input_path, ffs_file.browser_dataset_path))
+    response = {"result": result, "preview": _browser_analysis_preview(ffs_file, analysis)}
     return _browser_response("Calculated " + result["mode"] + ".", **response)
 
 
@@ -4696,12 +4788,6 @@ def _browser_session_for_native_save():
         library.lib.append(saved_image)
         for ffs_file in image.ffs_list:
             saved_file = copy(ffs_file)
-            folder = str(getattr(ffs_file, "browser_source_folder", "") or "").strip()
-            if folder:
-                import ntpath
-                import posixpath
-                path_module = ntpath if "\\" in folder or ntpath.splitdrive(folder)[0] else posixpath
-                saved_file.fname = path_module.join(folder, path_module.basename(str(ffs_file.fname)))
             saved_file.metadata = copy(ffs_file.metadata)
             if saved_file.metadata.coords is None:
                 saved_file.metadata.coords = [-1, -1]
@@ -4786,6 +4872,106 @@ def _browser_native_ffs_writer():
     return savelib_ffs
 
 
+def _browser_favourite_flag(value):
+    """Interpret persisted boolean flags, defaulting missing or unknown values to false."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return bool(value == 1)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return isinstance(value, str) and value.strip().lower() in ("true", "1")
+
+
+def browser_restore_ffs(input_path):
+    """Restore a desktop FFS session and prepare its saved data for display."""
+    global ffslib, _browser_joblist, _browser_correlation_clipboard, _browser_pending_file_index
+    # Load the same module as the native writer, including its browser-only
+    # compatibility shim for the unused desktop file-dialog import.
+    _browser_native_ffs_writer()
+    from brighteyes_ffs.fcs_gui.restore_session import restorelib
+    restored = restorelib(input_path)
+    if restored is None:
+        raise ValueError("The selected file is not a supported .ffs session.")
+    with h5py.File(input_path, "r") as source:
+        for image_index, image in enumerate(restored.lib):
+            image.browser_image_preview = _browser_image_preview(np.asarray(image.image))
+            for file_index, ffs_file in enumerate(image.ffs_list):
+                group = source.get(f"image{image_index}/file{file_index}")
+                flag = group.attrs.get("mark_as_favourite", False) if group is not None else False
+                ffs_file.mark_as_favourite = _browser_favourite_flag(flag)
+                ffs_file.browser_restored = True
+                trace = getattr(ffs_file, "timetrace", None)
+                if trace is not None:
+                    trace = np.asarray(trace)
+                    if trace.ndim == 1: trace = trace[:, None]
+                    duration = _browser_number(getattr(ffs_file.metadata, "duration", None), None)
+                    dwell = duration * 1e6 / trace.shape[0] if duration and trace.shape[0] else _browser_number(getattr(ffs_file.metadata, "time_resolution", None), 1)
+                    fingerprint = getattr(ffs_file, "airy", None)
+                    fingerprint = np.ravel(fingerprint).tolist() if fingerprint is not None else np.sum(trace, axis=0).tolist()
+                    ffs_file.browser_preview = {"traces": trace.T.tolist(), "fingerprint": fingerprint, "step": 1,
+                        "dwell_us": dwell, "detector_type": _count_detector_type(trace.shape[1])}
+                for analysis in ffs_file.analysis_list:
+                    corrs = getattr(analysis, "corrs", None)
+                    analysis.browser_fits = []
+                    if corrs is None or not getattr(corrs, "list_of_g_out", None):
+                        continue
+                    result = _native_correlations_to_result(corrs, analysis.mode,
+                        duration_s=_browser_number(getattr(ffs_file.metadata, "duration", None), None))
+                    analysis.browser_result = result
+                    analysis.browser_chunk_source = result
+                    labels = result.get("trace_labels", [])
+                    taus = result["tau_s"] if result["tau_s"] and isinstance(result["tau_s"][0], list) else [result["tau_s"]]
+                    gs = result["g"] if result["g"] and isinstance(result["g"][0], list) else [result["g"]]
+                    for fit in getattr(analysis, "fits", []):
+                        curves = []
+                        for index, item in enumerate(fit.fit_all_curves):
+                            label = str(item.data)
+                            curve_index = labels.index(label) if label in labels else min(index, len(taus) - 1)
+                            tau = np.asarray(taus[curve_index], dtype=float)
+                            g = np.asarray(gs[curve_index], dtype=float)
+                            start, stop = [int(v) for v in item.fitrange]
+                            start, stop = max(1, start), min(len(tau), stop)
+                            residual = np.asarray(item.fitresult, dtype=float).ravel()
+                            length = min(max(0, stop - start), len(residual))
+                            model_key = next((key for key, model in _FIT_MODELS.items() if model["label"] == str(item.fitfunction_label)), None)
+                            model = _FIT_MODELS.get(model_key, {})
+                            indices = np.asarray(item.paramidx, dtype=int)
+                            values = np.asarray(item.startvalues, dtype=float)
+                            names = model.get("params", ["Parameter " + str(i + 1) for i in range(len(indices))])
+                            params = {name: float(values[i]) for name, i in zip(names, indices) if 0 <= i < len(values)}
+                            display = [None] * len(tau)
+                            display[start:start + length] = (g[start:start + length] - residual[:length]).tolist()
+                            tau_ms = next((v for n, v in params.items() if "tau" in n.lower() and "(ms)" in n.lower()), None)
+                            curves.append({"model": str(item.fitfunction_label), "model_key": model_key,
+                                "parameters": params, "curve": display, "residuals": residual[:length].tolist(),
+                                "fitresult": residual.tolist(), "start": start, "stop": stop, "fitrange": [start, stop],
+                                "tauD_s": tau_ms * 1e-3 if tau_ms is not None else None,
+                                "data": label, "startvalues": values.tolist(), "fitarray": np.asarray(item.fitarray).tolist(),
+                                "param_factors10": np.asarray(item.param_factors10).tolist(), "paramidx": indices.tolist(),
+                                "minbound": [float(v) if np.isfinite(v) else None for v in item.minbound],
+                                "maxbound": [float(v) if np.isfinite(v) else None for v in item.maxbound]})
+                        if curves:
+                            analysis.browser_fits.append(curves[0] if len(curves) == 1 else {"model": curves[0]["model"], "fits": curves})
+                active = ffs_file.get_analysis()
+                if active is not None and isinstance(getattr(active, "browser_result", None), dict):
+                    ffs_file.browser_result = active.browser_result
+                    ffs_file.browser_chunk_source = active.browser_chunk_source
+                    count = len(active.browser_result.get("chunks", [[]])[0])
+                    mask = np.ravel(getattr(active.settings, "chunks_off", np.ones(count))).astype(bool).tolist()
+                    ffs_file.browser_active_chunks = mask if len(mask) == count and any(mask) else [True] * count
+                    ffs_file.browser_active_fit_index = active.active_fit
+                    if active.active_fit is not None and 0 <= int(active.active_fit) < len(active.browser_fits):
+                        ffs_file.browser_fit = active.browser_fits[int(active.active_fit)]
+    ffslib = restored
+    _browser_joblist, _browser_correlation_clipboard, _browser_pending_file_index = [], None, None
+    current = _browser_current_file()
+    response = {"clear_result": True}
+    if current is not None and isinstance(getattr(current, "browser_result", None), dict):
+        response = {"result": current.browser_result, "fit": getattr(current, "browser_fit", None)}
+    return _browser_response("Session restored. Original raw files are not included in the session; recalculation requires loading them separately.", **response)
+
+
 def save_session(payload=None):
     """Save through the same BrightEyes-FFS writer used by the desktop."""
     writer = _browser_native_ffs_writer()
@@ -4800,7 +4986,7 @@ def save_session(payload=None):
                 for file_index, item in enumerate(image.ffs_list):
                     group = exported[f"image{image_index}/file{file_index}"]
                     group.attrs["mark_as_favourite"] = bool(getattr(item, "mark_as_favourite", False))
-                    group.attrs["source_folder"] = str(getattr(item, "browser_source_folder", ""))
+                    group.attrs["source_folder"] = ""
         with open(path, "rb") as handle:
             encoded = base64.b64encode(handle.read()).decode("ascii")
     finally:
@@ -4816,7 +5002,7 @@ def save_session(payload=None):
 
 
 def open_session(payload=None):
-    return _browser_response("Choose a browser JSON session file.", browser_action="request_session_file")
+    return _browser_response("Choose an .ffs session file.", browser_action="request_session_file")
 
 
 def new_session(payload=None):
@@ -4856,9 +5042,12 @@ def remove_current_ffs_file(payload=None):
     image = _browser_current_image()
     if image is None or image.num_files < 1:
         return _browser_response("There is no FFS file to remove.")
-    image.remove_ffs_file(image.active_ffs)
-    image.active_ffs = min(max(image.num_files - 1, 0), 4) if image.num_files else None
-    return _browser_response("Removed the current FFS file.")
+    removed_index = int(image.active_ffs or 0)
+    image.remove_ffs_file(removed_index)
+    image.active_ffs = min(removed_index, image.num_files - 1) if image.num_files else None
+    if image.active_ffs is not None:
+        return activate_ffs_file({"button_data": {"fileIndex": image.active_ffs}})
+    return _browser_response("Removed the current FFS file.", clear_result=True)
 
 
 def remove_current_image(payload=None):
@@ -5149,12 +5338,16 @@ def browser_action_catalog():
       let correlationViewport = null;
       let correlationSelection = null;
       let activeView = null;
+      let hoveredFileIndex = null;
+      let lastRenderedFileKey = null;
       let correlationWorker = null;
       let correlationWorkerReady = null;
       let correlationWorkerBooted = false;
       let correlationWorkerStage = "starting";
       let correlationJob = null;
       let startupPreviewData = null;
+      let lastDrawnPreview = null;
+      let lastDiffusionLaw = null;
       const h5FilesByTab = new Map();
       const imageUrls = [];
       const startupStages = [
@@ -5178,7 +5371,7 @@ def browser_action_catalog():
       ];
 
       sessionInput.type = "file";
-      sessionInput.accept = ".ffs,.json,application/json";
+      sessionInput.accept = ".ffs,application/x-hdf5";
       sessionInput.hidden = true;
       document.body.appendChild(sessionInput);
 
@@ -5215,6 +5408,8 @@ def browser_action_catalog():
             correlationCanvas.dataset.lastFit ? JSON.parse(correlationCanvas.dataset.lastFit) : null
           );
         }
+        if (lastDrawnPreview) drawPreview(lastDrawnPreview);
+        if (lastDiffusionLaw && !byId("diffusionPlotWrap").hidden) drawDiffusionLaw(lastDiffusionLaw);
       }
 
       function updateStartupProgress(message) {
@@ -5268,7 +5463,8 @@ def browser_action_catalog():
         // each file tab exposes its own correlation list.
         if (fcsFileContent && analysisTreePanel) fcsFileContent.appendChild(analysisTreePanel);
         if (fcsFileContent && middleMonitor) fcsFileContent.appendChild(middleMonitor);
-        if (fcsFileContent && chunksPanel) fcsFileContent.appendChild(chunksPanel);
+        const traceBody = middleMonitor && middleMonitor.querySelector('[aria-labelledby="traceHeading"] .panel-body');
+        if (traceBody && chunksPanel) traceBody.appendChild(chunksPanel);
         if (fcsFileContent && resultsPanel) fcsFileContent.appendChild(resultsPanel);
         if (rightSidebar && calculatePanel) rightSidebar.appendChild(calculatePanel);
         if (rightSidebar && fitPanel) rightSidebar.appendChild(fitPanel);
@@ -5552,6 +5748,7 @@ def browser_action_catalog():
           const option = document.createElement("option");
           option.value = dataset.path;
           option.textContent = dataset.path + "  (" + dataset.shape.join(" × ") + ")";
+          option.title = dataset.path;
           option.selected = dataset.path === selectedPath;
           datasetSelect.appendChild(option);
         });
@@ -5560,11 +5757,13 @@ def browser_action_catalog():
             const option = document.createElement("option");
             option.value = String(channel);
             option.textContent = "det" + channel;
+            option.title = "/det" + channel;
             option.selected = Number(channel) === Number(file.selected_tcspc_channel);
             datasetSelect.appendChild(option);
           });
         }
         byId("datasetSelectLabel").textContent = isTcspc ? "TCSPC detector channel" : "Numeric count dataset";
+        datasetSelect.title = isTcspc && datasetSelect.value ? "/det" + datasetSelect.value : (datasetSelect.value || "");
         byId("datasetZone").hidden = !isTcspc && !(datasets || []).length;
         renderRowsPreview(file && file.rows_preview);
         suppressDatasetChange = false;
@@ -5601,9 +5800,10 @@ def browser_action_catalog():
           row.append(caption, input, checkbox, fitText);
           fields.appendChild(row);
         });
-        byId("fitSummary").textContent = (model.global_fit
-          ? "Desktop global constraints are not yet coupled in the browser; curves are fitted independently. "
-          : "") + "Start point 1 excludes zero lag; stop is exclusive and 0 uses the final point.";
+        byId("fitSummary").hidden = !model.global_fit;
+        byId("fitSummary").textContent = model.global_fit
+          ? "Desktop global constraints are not yet coupled in the browser; curves are fitted independently."
+          : "";
       }
 
       async function initializeFitModels() {
@@ -5669,10 +5869,10 @@ def browser_action_catalog():
               if (!Number.isFinite(x) || !Number.isFinite(y) || imageWidth <= 0 || imageHeight <= 0) return;
               const px = x * displayWidth / imageWidth;
               const py = y * displayHeight / imageHeight;
-              const selected = index === activeImage.active_file;
+              const selected = index === (hoveredFileIndex === null ? activeImage.active_file : hoveredFileIndex);
               context.save();
-              context.strokeStyle = selected ? "#42e8d7" : "#ffb24a";
-              context.fillStyle = selected ? "#42e8d7" : "#ffb24a";
+              context.strokeStyle = selected ? "#42e8d7" : "#ffffff";
+              context.fillStyle = selected ? "#42e8d7" : "#ffffff";
               context.lineWidth = Math.max(1, Math.min(displayWidth, displayHeight) / 110);
               context.beginPath();
               context.arc(px, py, Math.max(3, Math.min(displayWidth, displayHeight) / 28), 0, Math.PI * 2);
@@ -5770,30 +5970,45 @@ def browser_action_catalog():
         activeView = view;
         const activeImage = view.images && view.images[view.active_image];
         const files = activeImage ? activeImage.files : [];
-        const tabs = document.querySelectorAll(".file-tabs .tab-button");
-        tabs.forEach(function (tab, index) {
-          const file = files[index];
+        byId("newFileButton").parentElement.classList.toggle("is-empty", files.length === 0);
+        const list = byId("fileTabList");
+        const oldScroll = list.scrollLeft;
+        const currentKey = activeImage && activeImage.active_file !== null
+          ? String(view.active_image) + ":" + String(activeImage.active_file) : null;
+        const fragment = document.createDocumentFragment();
+        files.forEach(function (file, index) {
+          const tab = document.createElement("button");
+          tab.type = "button";
+          tab.className = "tab-button";
+          tab.setAttribute("role", "tab");
           tab.dataset.fileIndex = String(index);
-          // Keep the desktop-style row of file tabs visible.  Empty slots
-          // remain compact so the five file buttons stay equal in size.
-          tab.hidden = false;
-          tab.disabled = index > files.length;
           tab.classList.toggle("is-active", Boolean(file && index === activeImage.active_file));
-          const fullLabel = file
-            ? (file.label || file.name || ("File " + (index + 1)))
-            : (index === files.length ? "New file" : "File " + (index + 1));
+          tab.classList.toggle("is-favourite", Boolean(file && file.favourite));
+          tab.setAttribute("aria-selected", index === Number(activeImage.active_file) ? "true" : "false");
+          const fullLabel = file.label || file.name || ("File " + (index + 1));
           tab.textContent = shortTabLabel(fullLabel);
-          tab.title = fullLabel;
+          tab.title = file.name || fullLabel;
+          fragment.appendChild(tab);
         });
+        list.replaceChildren(fragment);
+        list.scrollLeft = oldScroll;
+        const activeTab = list.querySelector(".is-active");
+        if (activeTab && currentKey !== lastRenderedFileKey) {
+          const tabBounds = activeTab.getBoundingClientRect(), listBounds = list.getBoundingClientRect();
+          if (tabBounds.left < listBounds.left) list.scrollLeft -= listBounds.left - tabBounds.left;
+          else if (tabBounds.right > listBounds.right) list.scrollLeft += tabBounds.right - listBounds.right;
+        }
+        lastRenderedFileKey = currentKey;
+        byId("newFileButton").dataset.fileIndex = String(files.length);
+        byId("newFileButton").classList.toggle("is-active", files.length === 0);
         const file = view.active_file;
         byId("fcsFileTitle").textContent = file ? (file.name || "FFS file") : "My FCS File";
+        byId("fcsFileTitle").title = file ? (file.name || file.label || "") : "";
         const star = byId("favouriteButton");
         star.disabled = !(file && file.loaded);
         star.textContent = file && file.favourite ? "★" : "☆";
         star.setAttribute("aria-pressed", file && file.favourite ? "true" : "false");
         star.setAttribute("aria-label", file && file.favourite ? "Remove favourite" : "Mark file as favourite");
-        byId("sourceFolderInput").value = file ? (file.source_folder || "") : "";
-        byId("sourceFolderInput").disabled = !(file && file.loaded);
         const fileStatus = byId("fileStatus");
         if (fileStatus) {
           fileStatus.hidden = Boolean(file && file.loaded);
@@ -5827,7 +6042,7 @@ def browser_action_catalog():
             details.forEach(function (analysis, index) {
               const option = document.createElement("option");
               option.value = "corr:" + index;
-              option.textContent = "Correlation " + (index + 1);
+              option.textContent = analysis.summary || ("Correlation " + (index + 1));
               option.selected = index === Number(file.active_analysis) && file.active_fit_index === null;
               analysisSelect.appendChild(option);
               (analysis.fits || []).forEach(function (fit) {
@@ -5860,6 +6075,7 @@ def browser_action_catalog():
 
       function drawPreview(preview) {
         if (!preview) return;
+        lastDrawnPreview = preview;
         const palette = plotPalette();
         const line = canvasContext(byId("timeTraceCanvas"), 500, 132);
         const traces = preview.traces || (preview.total ? [preview.total] : []);
@@ -5884,11 +6100,13 @@ def browser_action_catalog():
           const left = 58, right = 16, top = 14, bottom = 34;
           const plotWidth = line.width - left - right;
           const plotHeight = line.height - top - bottom;
-          const durationS = Math.max(0, (ratesKHz[0].length - 1) * binSize * dwellUs * 1e-6);
+          const traceDuration = Number(preview.duration_s);
+          const durationS = Number.isFinite(traceDuration) && traceDuration > 0
+            ? traceDuration : Math.max(0, (ratesKHz[0].length - 1) * binSize * dwellUs * 1e-6);
           const xAt = function (index) { return left + index * plotWidth / Math.max(ratesKHz[0].length - 1, 1); };
           const yAt = function (value) { return line.height - bottom - (value - low) * plotHeight / span; };
           if (preview.chunk && Number(preview.chunk.count) > 0) {
-            const requestedChunkS = Number(byId("chunkSizeInput").value);
+            const requestedChunkS = Number(preview.chunk.duration_s);
             const equalFraction = 1 / Number(preview.chunk.count);
             const chunkGeometry = function (index) {
               // A final partial interval is not a full chunk.  Position each
@@ -5900,6 +6118,7 @@ def browser_action_catalog():
                 if (startS < durationS && stopS > startS) {
                   return { start: startS / durationS, width: (stopS - startS) / durationS };
                 }
+                return { start: 1, width: 0 };
               }
               return { start: index * equalFraction, width: equalFraction };
             };
@@ -5966,10 +6185,13 @@ def browser_action_catalog():
         const detectorType = preview.detector_type || (fingerprint.length === 49 ? "prism-7x7" : fingerprint.length === 25 ? "custom" : "");
         const pda23 = detectorType === "pi-imaging-pda23";
         const displayed = pda23 ? fingerprint.slice(9, 32) : fingerprint;
-        const maximum = Math.max.apply(null, displayed.concat([1]));
-        const inferno = [[0, 0, 4], [66, 10, 104], [147, 38, 103], [221, 81, 58], [252, 164, 54], [252, 255, 164]];
+        const finiteValues = displayed.filter(function (value) { return typeof value === "number" && Number.isFinite(value); });
+        const minimum = finiteValues.length ? Math.min.apply(null, finiteValues) : 0;
+        const maximum = finiteValues.length ? Math.max.apply(null, finiteValues) : 0;
+        const inferno = [[0, 0, 0], [66, 10, 104], [147, 38, 103], [221, 81, 58], [252, 164, 54], [252, 255, 164]];
         const colorFor = function (value) {
-          const intensity = Math.max(0, Math.min(1, value / maximum));
+          const intensity = Number.isFinite(value) && maximum > minimum
+            ? Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum))) : 0;
           const scaled = intensity * (inferno.length - 1);
           const lowColor = inferno[Math.floor(scaled)];
           const highColor = inferno[Math.min(inferno.length - 1, Math.ceil(scaled))];
@@ -6011,7 +6233,7 @@ def browser_action_catalog():
 
       function drawCorrelation(result, fit) {
         const palette = plotPalette();
-        const target = canvasContext(byId("correlationCanvas"), 620, 420);
+        const target = canvasContext(byId("correlationCanvas"), 620, 500);
         const context = target.context;
         context.fillStyle = palette.background;
         context.fillRect(0, 0, target.width, target.height);
@@ -6060,8 +6282,8 @@ def browser_action_catalog():
         const yStep = niceNumber(ySpan / 5, true);
         const left = 66, right = 18, top = 20, bottom = 48;
         const plotWidth = target.width - left - right;
-        const mainBottom = 232;
-        const residualTop = 278;
+        const mainBottom = 302;
+        const residualTop = 348;
         const residualBottom = target.height - bottom;
         const plotHeight = mainBottom - top;
         const canvas = byId("correlationCanvas");
@@ -6269,7 +6491,6 @@ def browser_action_catalog():
         byId("resultEmpty").hidden = true;
         byId("resultContent").hidden = false;
         byId("resultHeading").textContent = result.mode || "Correlation";
-        byId("resultMode").textContent = result.mode || "Correlation";
         const multiple = result.tau_s && Array.isArray(result.tau_s[0]);
         const count = multiple ? result.tau_s.reduce(function (total, trace) { return total + trace.length; }, 0) : (result.tau_s || []).length;
         byId("resultDescription").textContent = (multiple ? (result.trace_labels || []).length + " curves" : "One curve") + " · " + count + " calculated points";
@@ -6284,6 +6505,7 @@ def browser_action_catalog():
         const wrap = byId("diffusionPlotWrap");
         const canvas = byId("diffusionCanvas");
         if (!law || !Array.isArray(law.waist_squared_um2) || !law.waist_squared_um2.length) { wrap.hidden = true; return; }
+        lastDiffusionLaw = law;
         wrap.hidden = false;
         const target = canvasContext(canvas, 620, 230), context = target.context, palette = plotPalette();
         const xs = law.waist_squared_um2.map(Number), ys = law.tau_ms.map(Number);
@@ -6494,13 +6716,36 @@ def browser_action_catalog():
       }
 
       function bindBrowserOnlyInputs() {
+        const fileTabList = byId("fileTabList");
+        fileTabList.addEventListener("pointerover", function (event) {
+          const tab = event.target.closest("button[data-file-index]");
+          if (!tab || !fileTabList.contains(tab)) return;
+          const index = Number(tab.dataset.fileIndex);
+          if (hoveredFileIndex === index) return;
+          hoveredFileIndex = index;
+          if (activeView) renderImage(activeView);
+        });
+        fileTabList.addEventListener("pointerout", function (event) {
+          const fromTab = event.target.closest("button[data-file-index]");
+          const toTab = event.relatedTarget && event.relatedTarget.closest
+            ? event.relatedTarget.closest("button[data-file-index]") : null;
+          if (!fromTab || fromTab === toTab || toTab && fileTabList.contains(toTab)) return;
+          hoveredFileIndex = null;
+          if (activeView) renderImage(activeView);
+        });
+        byId("fileTabList").addEventListener("click", async function (event) {
+          const tab = event.target.closest("button[data-file-index]");
+          if (!tab || !this.contains(tab)) return;
+          try {
+            setStatus("starting", "Switching file…");
+            applyResponse(await dispatchPythonHandler("activate_ffs_file", {
+              button_data: {fileIndex: tab.dataset.fileIndex}, values: formValues()
+            }));
+          } catch (error) { setStatus("error", "Could not switch file: " + describeError(error)); }
+        });
         byId("favouriteButton").addEventListener("click", async function () {
           try { applyResponse(await callPython("browser_toggle_favourite()")); }
           catch (error) { setStatus("error", "Could not update favourite: " + describeError(error)); }
-        });
-        byId("sourceFolderInput").addEventListener("change", async function () {
-          try { applyResponse(await callPython("browser_set_source_folder(browser_source_folder)", {browser_source_folder: this.value})); }
-          catch (error) { setStatus("error", "Could not update folder: " + describeError(error)); }
         });
         const themeToggle = byId("themeToggle");
         applyTheme(document.documentElement.dataset.theme);
@@ -6653,6 +6898,8 @@ def browser_action_catalog():
         });
         datasetSelect.addEventListener("change", async function () {
           if (suppressDatasetChange || !datasetSelect.value) return;
+          datasetSelect.title = activeView && activeView.active_file && activeView.active_file.data_kind === "tcspc"
+            ? "/det" + datasetSelect.value : datasetSelect.value;
           try {
             const isTcspc = Boolean(activeView && activeView.active_file && activeView.active_file.data_kind === "tcspc");
             const expression = isTcspc
@@ -6706,7 +6953,9 @@ def browser_action_catalog():
           const file = sessionInput.files[0];
           if (!file) return;
           try {
-            applyResponse(await callPython("browser_load_session(browser_session_json)", { browser_session_json: await file.text() }));
+            setStatus("starting", "Opening " + file.name + "…");
+            await waitForBusyPaint();
+            applyResponse(await uploadFile(file, "browser_restore_ffs(browser_upload_path)"));
           } catch (error) {
             setStatus("error", "Could not open session: " + describeError(error));
           } finally {
