@@ -269,6 +269,7 @@
     }
     .file-tabs .tab-button {
       flex: 0 0 auto;
+      min-width: 84px;
       max-width: 180px;
       font-weight: 400;
       overflow: hidden;
@@ -309,8 +310,15 @@
       font-size: .77rem;
     }
     #xCoordInput, #yCoordInput { width: 50px !important; flex: 0 0 50px; }
-    #imageNameButton, #newFileButton, #saveLabelButton { font-weight: 400; }
-    #newFileButton { flex: 0 0 auto; white-space: nowrap; }
+    #imageNameButton, #newFileButton, #saveLabelButton, #giveTourButton, #loadExampleButton { font-weight: 400; }
+    #newFileButton, #loadExampleButton, #giveTourButton { flex: 0 0 auto; white-space: nowrap; }
+    .tour-spotlight { position: fixed; z-index: 1100; border: 3px solid #48c9c3; border-radius: 10px; box-shadow: 0 0 0 9999px rgba(3, 14, 24, .64); pointer-events: none; }
+    .tour-card { position: fixed; z-index: 1101; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); padding: 17px 19px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 36px rgba(0,0,0,.3); }
+    .tour-card h2 { margin: 3px 0 7px; font-size: 1rem; }
+    .tour-card p { margin: 0 0 12px; line-height: 1.4; font-size: .82rem; }
+    .tour-card .tour-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .tour-card .tour-progress { color: var(--soft); font-size: .72rem; }
+    .tour-card[hidden], .tour-spotlight[hidden] { display: none; }
 
     .tool-button,
     .tab-button,
@@ -432,6 +440,9 @@
     .right-sidebar .action-row { gap: 8px; }
     .right-sidebar .run-button { min-height: 37px; padding: 8px 11px; font-size: .78rem; }
     .right-sidebar .tool-button { min-height: 31px; padding: 6px 8px; font-size: .71rem; }
+    .calculate-panel select, .calculate-panel input[type="number"] { font-weight: 400; }
+    .calculate-panel #calculateButton { font-weight: 400; color: #164b50; background: #d8eeee; border-color: #9bc6c8; }
+    html[data-theme="light"] .calculate-panel #calculateButton { color: #164b50; background: #d8eeee; }
 
     .legacy-data-panel { display: none; }
 
@@ -483,12 +494,16 @@
 
     .fingerprint-placeholder {
       width: 128px;
-      height: 128px;
+      height: auto;
+      aspect-ratio: 1 / 1;
       min-height: 0;
       justify-self: center;
       border-radius: 12px;
       text-align: center;
     }
+    .fingerprint-scale { width: 128px; max-width: 100%; margin: 6px auto 0; }
+    .fingerprint-scale-bar { height: 8px; border-radius: 3px; border: 1px solid var(--line); }
+    .fingerprint-scale-labels { display: flex; justify-content: space-between; gap: 4px; margin-top: 2px; color: var(--muted); font-size: .65rem; }
 
     .desktop-workspace .results {
       grid-column: 2;
@@ -546,11 +561,11 @@
     .middle-monitor .chunks-panel .panel-body { padding: 0; }
     .chunks-panel .control-grid { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; }
     .chunks-panel .control-grid > label { flex: 0 1 auto; min-width: 0; }
-    .chunks-panel #chunkNumberInput { width: 66px; min-height: 32px; padding: 5px 6px; }
-    .chunks-panel #showChunksCorrSelect { width: 118px; min-height: 32px; padding: 5px 6px; }
+    .chunks-panel #chunkNumberInput { width: 66px; min-height: 32px; padding: 5px 6px; font-weight: 400; }
+    .chunks-panel #showChunksCorrSelect { width: 118px; min-height: 32px; padding: 5px 6px; font-weight: 400; }
     .chunks-panel .control-grid > label > span { font-size: .7rem; margin-bottom: 3px; }
     .chunks-panel .check-label { line-height: 1.1; }
-    .chunks-panel .control-grid > .tool-button { min-height: 32px; padding: 6px 7px; font-size: .7rem; white-space: nowrap; }
+    .chunks-panel .control-grid > .tool-button { min-height: 32px; padding: 6px 7px; font-size: .7rem; font-weight: 400; white-space: nowrap; }
     #diffusionPlotWrap {
       margin-top: 14px;
       padding-top: 0;
@@ -1537,8 +1552,9 @@
               <button class="nav-button" id="previousImageButton" type="button" data-python-handler="previous_image" aria-label="Previous image">‹</button>
               <button class="tool-button" id="imageNameButton" style="flex:1" type="button" data-python-handler="change_image_file">Open image</button>
               <button class="nav-button" id="nextImageButton" type="button" data-python-handler="next_image" aria-label="Next image">›</button>
-              <input id="imageInput" type="file" accept="image/*,.tif,.tiff,.h5,application/x-hdf5,application/x-hdf5-file" hidden>
+              <input id="imageInput" type="file" accept="image/*,.tif,.tiff,.h5,.bin,application/x-hdf5,application/x-hdf5-file" hidden>
             </div>
+            <div id="imageCounter" class="timing-note" style="text-align:center; margin-top:5px" aria-live="polite">Image 0 of 0</div>
           </div>
         </section>
         <section class="panel" aria-labelledby="notesHeading">
@@ -1553,6 +1569,8 @@
         <div id="fileTabList" class="file-tab-list" role="tablist" aria-label="Files for current image"></div>
         <button class="nav-button" id="nextFileButton" type="button" data-python-handler="next_file" aria-label="Next FFS file">›</button>
         <button id="newFileButton" class="tool-button is-active" type="button" data-python-handler="activate_ffs_file" data-file-index="0">New file</button>
+        <button id="giveTourButton" class="tool-button" type="button" title="Load the example and explore the interface">Give me a tour</button>
+        <button id="loadExampleButton" class="tool-button" type="button" title="Load the example FFS session from GitHub">Load example</button>
       </div>
       <div class="file-details">
         <div class="file-location"><div class="file-name-row"><button id="favouriteButton" type="button" aria-label="Mark file as favourite" title="Mark as favourite" aria-pressed="false" disabled>☆</button><strong id="fcsFileTitle">My FCS File</strong></div></div>
@@ -1574,7 +1592,7 @@
         </div>
         <div class="panel-body">
           <label class="file-picker">
-            <input id="fileInput" type="file" accept=".h5,.hdf5,.ptu,application/x-hdf5,application/x-hdf5-file">
+            <input id="fileInput" type="file" accept=".h5,.hdf5,.ptu,.bin,application/x-hdf5,application/x-hdf5-file">
             <span>
               <strong>Select a local H5 file</strong>
               <span>Canonical BrightEyes files use <b>/data</b> with time in rows and detector channels in columns.</span>
@@ -1663,7 +1681,7 @@
       </section>
       <section class="panel" aria-labelledby="fingerprintHeading">
         <div class="panel-heading"><h2 id="fingerprintHeading">Fingerprint</h2></div>
-        <div class="panel-body"><canvas id="fingerprintCanvas" class="fingerprint-placeholder" aria-label="Detector fingerprint"></canvas></div>
+        <div class="panel-body"><canvas id="fingerprintCanvas" class="fingerprint-placeholder" aria-label="Detector fingerprint"></canvas><div class="fingerprint-scale" aria-label="Fingerprint colour scale"><div id="fingerprintScaleBar" class="fingerprint-scale-bar"></div><div class="fingerprint-scale-labels"><span id="fingerprintScaleMin">—</span><span id="fingerprintScaleMax">—</span></div></div></div>
       </section>
     </section>
 
@@ -1690,6 +1708,7 @@
           <div class="control-grid">
             <label><span>Keep fixed</span><select id="keepFixedInput"><option>Keep w0 fixed</option><option>Keep D fixed</option></select></label>
             <label><span>Beam waist (nm)</span><input id="beamWaistInput" type="text" value="250, 300, 350"></label>
+            <label><span>Diffusion coefficient (µm²/s)</span><input id="diffusionCoefficientInput" type="text" value="1"></label>
             <label><span>Diameter (nm)</span><input id="diameterInput" type="text" value="10, 10, 10"></label>
             <label><span>Calculate</span><select id="diameterCalculationInput"><option>Calculate diameter</option><option>Calculate viscosity</option><option>Calculate temperature</option></select></label>
           </div>
@@ -1718,8 +1737,8 @@
         <div class="panel-body">
           <div class="control-grid">
             <label><span>Chunk number</span><input id="chunkNumberInput" type="number" min="0" step="1" value="0"></label>
-            <label><span>Show chunk correlation</span><select id="showChunksCorrSelect"><option value="average">Average</option><option value="current">Current chunk</option></select></label>
-            <label class="check-label"><input id="chunkOnInput" type="checkbox" checked><span>Use current<br>chunk</span></label>
+            <label><span>Show correlation</span><select id="showChunksCorrSelect"><option value="average">Average</option><option value="current">Current chunk</option></select></label>
+            <label class="check-label"><input id="chunkOnInput" type="checkbox" checked><span>Chunk on</span></label>
             <button class="tool-button" type="button" data-python-handler="filter_out_bad_chunks">Filter bad chunks</button>
             <button class="tool-button" type="button" data-python-handler="turn_on_all_chunks">Use all chunks</button>
           </div>
@@ -1767,7 +1786,6 @@
         <div>
           <div class="result-empty-icon" aria-hidden="true">G(τ)</div>
           <h2 id="resultsHeading">Correlation results will appear here</h2>
-          <p>The calculation uses BrightEyes-FFS <b>tt2corr</b>: a Wiener–Khinchin FFT correlation sampled at logarithmically spaced lag times.</p>
         </div>
       </div>
 
@@ -2545,7 +2563,7 @@ def _load_tcspc_time_trace(ffs_file, maximum_bins=10000):
         raise ValueError("Could not determine a positive duration from the TCSPC arrival times.")
     number_of_bins = int(np.clip(np.ceil(duration_s / 1e-3), 1, maximum_bins))
     number_of_channels = max(25, detector_fields[-1][0] + 1)
-    trace = np.zeros((number_of_bins, number_of_channels), dtype=np.uint32)
+    trace = np.zeros((number_of_bins, number_of_channels), dtype=float)
     first_tick, _, seconds_per_tick = _tcspc_timebase(raw_data, detector_fields)
     for channel, name in detector_fields:
         arrivals = np.asarray(getattr(raw_data, name))
@@ -2556,7 +2574,11 @@ def _load_tcspc_time_trace(ffs_file, maximum_bins=10000):
         arrival_s = (np.asarray(arrivals[:, 0], dtype=float) - first_tick) * seconds_per_tick
         bin_index = np.floor(arrival_s * number_of_bins / duration_s).astype(np.int64)
         bin_index = np.clip(bin_index, 0, number_of_bins - 1)
-        trace[:, channel] = np.bincount(bin_index, minlength=number_of_bins).astype(np.uint32)
+        # Converted count traces use a third column for photons in each bin.
+        # True TCSPC streams instead contain one row per photon.
+        weighted = not bool(getattr(raw_data, "tcspc", True)) and arrivals.shape[1] >= 3
+        weights = np.asarray(arrivals[:, 2], dtype=float) if weighted else None
+        trace[:, channel] = np.bincount(bin_index, weights=weights, minlength=number_of_bins)
 
     preview_dwell_s = duration_s / number_of_bins
     source_dwell_us = _tcspc_source_dwell_us(ffs_file, raw_data)
@@ -3604,6 +3626,8 @@ def _browser_file_metadata(ffs_file):
 
 
 def _browser_file_view(ffs_file, index):
+    if isinstance(getattr(ffs_file, "browser_preview", None), dict):
+        _browser_analysis_preview(ffs_file, ffs_file.get_analysis())
     analyses_detail = []
     for analysis_index, analysis in enumerate(ffs_file.analysis_list):
         fit_records = list(getattr(analysis, "browser_fits", []))
@@ -3842,10 +3866,10 @@ def _browser_fit_value_column(value, default, number_of_curves, parameter_name):
             raise ValueError(parameter_name + " must contain comma-separated numbers.") from error
     if not parsed or not all(math.isfinite(item) for item in parsed):
         raise ValueError(parameter_name + " must contain finite numbers.")
-    if len(parsed) == 1:
-        return parsed * number_of_curves
     if len(parsed) != number_of_curves:
-        raise ValueError(parameter_name + " needs either one value or " + str(number_of_curves) + " comma-separated values.")
+        # A single value or any mismatched list uses its first value for all
+        # curves. Matching-length lists retain their individual values.
+        return [parsed[0]] * number_of_curves
     return parsed
 
 
@@ -4013,6 +4037,24 @@ def browser_load_data_file(input_path, fname):
     )
 
 
+def browser_convert_bin_and_load(input_path, fname, metadata_path):
+    """Use the package converter and open its weighted-arrival H5 output."""
+    import os
+    import shutil
+    from brighteyes_ffs.fcs.fcsbin2h5 import fcsbin2h5_atimes
+
+    stem = os.path.splitext(input_path)[0]
+    # The desktop metadata loader expects a sibling named <stem>_info.txt.
+    shutil.copyfile(metadata_path, stem + "_info.txt")
+    output_path = stem + ".h5"
+    fcsbin2h5_atimes(input_path, output_path)
+    output_name = os.path.splitext(str(fname))[0] + ".h5"
+    response = json.loads(browser_load_data_file(output_path, output_name))
+    response["converted_h5_path"] = output_path
+    response["converted_h5_name"] = output_name
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
+
+
 def browser_load_data_file_safe(input_path, fname):
     """Return H5 loading errors as UI data instead of an opaque Pyodide error."""
     try:
@@ -4125,7 +4167,7 @@ def _browser_image_preview(image_data, maximum_side=256):
 
 
 def browser_load_image_file(input_path, fname, replace=False):
-    """Browser counterpart of desktop ``open_image`` for TIFF and H5 images."""
+    """Browser counterpart of desktop ``open_image`` for TIFF, H5 and BIN."""
     suffix = str(fname).lower().rsplit(".", 1)[-1] if "." in str(fname) else ""
     if suffix in {"tif", "tiff"}:
         import tifffile
@@ -4133,8 +4175,17 @@ def browser_load_image_file(input_path, fname, replace=False):
     elif suffix == "h5":
         with h5py.File(input_path, "r") as handle:
             image_data = _image_to_2d(_h5_image_dataset(handle)[()], keep_largest_axes=False)
+    elif suffix == "bin":
+        from brighteyes_ffs.fcs.meas_to_count import file_to_count, reshape_to_5d
+        counts, frames, y, x, time_per_pixel = file_to_count(input_path, print_info=False)
+        stack = reshape_to_5d(counts, frames, y, x, time_per_pixel)
+        # Match the desktop GUI: choose the middle frame and sum both time
+        # bins and detector channels, preserving the Y and X axes.
+        image_data = np.squeeze(np.sum(np.sum(stack[int(np.floor(len(stack) / 2))], 3), 2))
+        if image_data.ndim != 2:
+            raise ValueError("The binary image did not produce a two-dimensional image.")
     else:
-        raise ValueError("Image format not supported yet. Choose a .tif, .tiff, or .h5 image.")
+        raise ValueError("Image format not supported. Choose a .tif, .tiff, .h5 or .bin image.")
 
     image = _browser_current_image()
     if replace and image is not None:
@@ -4150,6 +4201,13 @@ def browser_load_image_file(input_path, fname, replace=False):
         "Loaded image " + str(fname) + " and stored it in the FFS session.",
         image_name=str(fname),
     )
+
+
+def browser_load_bin_image(input_path, fname, metadata_path, replace=False):
+    import os
+    import shutil
+    shutil.copyfile(metadata_path, os.path.splitext(input_path)[0] + "_info.txt")
+    return browser_load_image_file(input_path, fname, replace)
 
 
 def browser_load_session(session_json):
@@ -4329,6 +4387,7 @@ def show_analysis(payload=None):
             fit = fit_records[fit_index]
             ffs_file.browser_fit = fit
             ffs_file.browser_active_fit_index = fit_index
+            analysis.active_fit = fit_index
             if chunk_response is not None:
                 chunk_response.update(message="Selected fit " + str(fit_index + 1) + ".", fit=fit, view=_browser_view())
                 return json.dumps(chunk_response, allow_nan=False, default=_browser_json_default)
@@ -4771,8 +4830,10 @@ def _write_browser_fits_ffs(fits_group, analysis):
             if not isinstance(fitrange, (list, tuple, np.ndarray)) or len(fitrange) != 2:
                 fitrange = [curve.get("start", 0), curve.get("stop", 0)]
             curve_group.attrs["fitrange"] = np.asarray([int(fitrange[0]), int(fitrange[1])], dtype=int)
-            curve_group.attrs["w0"] = "None"
-            curve_group.attrs["D"] = "None"
+            saved_w0 = _browser_number(curve.get("w0"), None)
+            saved_D = _browser_number(curve.get("D", curve.get("diffusion_um2_s")), None)
+            curve_group.attrs["w0"] = "None" if saved_w0 is None else saved_w0
+            curve_group.attrs["D"] = "None" if saved_D is None else saved_D
 
 
 def _browser_session_for_native_save():
@@ -4839,7 +4900,8 @@ def _browser_session_for_native_save():
                                 paramidx=np.asarray(curve.get("paramidx", np.arange(count)), dtype=int),
                                 data=str(curve.get("data", "")), fitfunction_label=str(curve.get("model", "")),
                                 fitrange=curve.get("fitrange", [curve.get("start", 0), curve.get("stop", 0)]),
-                                w0=curve.get("w0"), D=curve.get("diffusion_um2_s")))
+                                w0=_browser_number(curve.get("w0"), None),
+                                D=_browser_number(curve.get("D", curve.get("diffusion_um2_s")), None)))
                         saved_analysis.fits.append(SimpleNamespace(fit_all_curves=saved_curves))
     return library
 
@@ -4947,6 +5009,8 @@ def browser_restore_ffs(input_path):
                                 "parameters": params, "curve": display, "residuals": residual[:length].tolist(),
                                 "fitresult": residual.tolist(), "start": start, "stop": stop, "fitrange": [start, stop],
                                 "tauD_s": tau_ms * 1e-3 if tau_ms is not None else None,
+                                "w0": _browser_number(getattr(item, "w0", None), None),
+                                "D": _browser_number(getattr(item, "D", None), None),
                                 "data": label, "startvalues": values.tolist(), "fitarray": np.asarray(item.fitarray).tolist(),
                                 "param_factors10": np.asarray(item.param_factors10).tolist(), "paramidx": indices.tolist(),
                                 "minbound": [float(v) if np.isfinite(v) else None for v in item.minbound],
@@ -5151,6 +5215,16 @@ def _browser_fit_current(values, replace=False):
     result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
     if not isinstance(result, dict):
         return _browser_response("Calculate a correlation before fitting.")
+    source = getattr(ffs_file, "browser_chunk_source", None)
+    chunks = source.get("chunks", []) if isinstance(source, dict) else []
+    if not chunks or not chunks[0]:
+        raise ValueError("Fitting requires the individual correlation chunks so the average of enabled chunks can be calculated.")
+    # Always recompute from the selected analysis's enabled chunks, regardless
+    # of whether the user had been viewing a single chunk.
+    average_response = json.loads(show_chunks_corr_change({"values": {"showChunksCorrSelect": "average"}}))
+    result = average_response.get("result")
+    if not isinstance(result, dict):
+        raise ValueError("Could not calculate the average of the enabled chunks for fitting.")
     fit = json.loads(fit_browser_model(json.dumps(_browser_fit_payload(values, result))))
     ffs_file.browser_fit = fit
     analysis = _browser_active_analysis(ffs_file)
@@ -5183,6 +5257,8 @@ def _browser_fit_current(values, replace=False):
         result=result,
         fit=fit,
         fit_values=fit_values,
+        show_chunks_mode="average",
+        preview=average_response.get("preview"),
     )
 
 
@@ -5200,23 +5276,40 @@ def update_diffLaw(payload=None):
     if not isinstance(fit, dict):
         return _browser_response("Create a fit before updating the diffusion law.")
     values = _browser_values(payload)
-    try:
-        waists_nm = [float(value.strip()) for value in str(values.get("beamWaistInput") or "").split(",") if value.strip()]
-    except ValueError:
-        return _browser_response("Beam waist must contain comma-separated positive numbers.")
-    if not waists_nm or any(not math.isfinite(value) or value <= 0 for value in waists_nm):
-        return _browser_response("Enter a positive beam waist in nm.")
     fits = _browser_fit_curves(fit)
-    if len(waists_nm) == 1:
-        waists_nm *= len(fits)
-    if len(waists_nm) != len(fits):
-        return _browser_response("Enter one beam waist or one value for every fitted curve.")
-    tau_ms, diffusion_values = [], []
-    for waist_nm, fit_curve in zip(waists_nm, fits):
-        diffusion = (waist_nm * 1e-3) ** 2 / (4 * fit_curve["tauD_s"])
-        fit_curve["diffusion_um2_s"] = diffusion
-        tau_ms.append(float(fit_curve["tauD_s"]) * 1e3)
-        diffusion_values.append(float(diffusion))
+    keep = str(values.get("keepFixedInput") or "Keep w0 fixed")
+    input_key = "diffusionCoefficientInput" if keep == "Keep D fixed" else "beamWaistInput"
+    description = "diffusion coefficient (µm²/s)" if keep == "Keep D fixed" else "beam waist (nm)"
+    try:
+        fixed = [float(value.strip()) for value in str(values.get(input_key) or "").split(",") if value.strip()]
+    except ValueError:
+        return _browser_response("Enter positive comma-separated values for " + description + ".")
+    if len(fixed) == 1:
+        fixed *= len(fits)
+    if len(fixed) != len(fits) or any(not math.isfinite(v) or v <= 0 for v in fixed):
+        return _browser_response("Enter one positive " + description + " or one per fitted curve.")
+    tau_seconds = [_browser_number(curve.get("tauD_s"), None) for curve in fits]
+    if any(tau is None or tau <= 0 for tau in tau_seconds):
+        return _browser_response("Each fitted curve needs a positive diffusion time to calculate D and w0.")
+    if keep == "Keep D fixed":
+        diffusion_values = fixed
+        waists_nm = [math.sqrt(4 * D * tau) * 1e3 for D, tau in zip(fixed, tau_seconds)]
+    else:
+        waists_nm = fixed
+        diffusion_values = [(waist * 1e-3) ** 2 / (4 * tau) for waist, tau in zip(fixed, tau_seconds)]
+    tau_ms = [tau * 1e3 for tau in tau_seconds]
+    analysis = _browser_active_analysis(ffs_file)
+    fit_index = getattr(ffs_file, "browser_active_fit_index", None)
+    native_fits = getattr(analysis, "fits", []) if analysis is not None else []
+    native = native_fits[int(fit_index)] if fit_index is not None and 0 <= int(fit_index) < len(native_fits) else None
+    native_curves = getattr(native, "fit_all_curves", []) if native is not None else []
+    for index, (fit_curve, waist_nm, diffusion) in enumerate(zip(fits, waists_nm, diffusion_values)):
+        fit_curve["w0"] = float(waist_nm)       # nm, as in FitSingleObj
+        fit_curve["D"] = float(diffusion)       # µm²/s
+        fit_curve["diffusion_um2_s"] = float(diffusion)  # older browser records
+        if index < len(native_curves):
+            native_curves[index].w0 = float(waist_nm)
+            native_curves[index].D = float(diffusion)
     beam_waist_nm = waists_nm[0]
     waist_squared_um2 = np.asarray([(value * 1e-3) ** 2 for value in waists_nm], dtype=float)
     tau_ms_array = np.asarray(tau_ms, dtype=float)
@@ -5228,6 +5321,8 @@ def update_diffLaw(payload=None):
     return _browser_response(
         "Updated diffusion estimate.",
         diffusion={"D_um2_s": diffusion_values[0], "w0_nm": beam_waist_nm, "tauD_s": tau_ms[0] * 1e-3},
+        diffusion_fields={"beamWaistInput": ", ".join(format(v, ".8g") for v in waists_nm),
+                          "diffusionCoefficientInput": ", ".join(format(v, ".8g") for v in diffusion_values)},
         diffusion_law={
             "waist_nm": waists_nm,
             # The desktop diffusion-law graph uses w0² in µm², not w0.
@@ -5330,6 +5425,13 @@ def browser_action_catalog():
       const imageInput = document.getElementById("imageInput");
       const datasetSelect = document.getElementById("datasetSelect");
       const sessionInput = document.createElement("input");
+      const binMetadataInput = document.createElement("input");
+      const metadataDialog = document.createElement("dialog");
+      const metadataMessage = document.createElement("p");
+      const metadataChoose = document.createElement("button");
+      const metadataCancel = document.createElement("button");
+      let pendingBinFile = null;
+      let pendingBinImage = null;
       let pyodide = null;
       let scriptPromise = null;
       let uploadNumber = 0;
@@ -5374,6 +5476,37 @@ def browser_action_catalog():
       sessionInput.accept = ".ffs,application/x-hdf5";
       sessionInput.hidden = true;
       document.body.appendChild(sessionInput);
+      binMetadataInput.type = "file";
+      binMetadataInput.accept = ".txt,text/plain";
+      binMetadataInput.hidden = true;
+      document.body.appendChild(binMetadataInput);
+      metadataDialog.setAttribute("aria-label", "Choose binary metadata file");
+      metadataDialog.style.cssText = "max-width: min(90vw, 460px); padding: 20px; border: 1px solid #9bb8c6; border-radius: 12px; background: var(--panel); color: var(--ink)";
+      metadataChoose.type = metadataCancel.type = "button";
+      metadataChoose.className = metadataCancel.className = "tool-button";
+      metadataChoose.textContent = "Choose metadata file";
+      metadataCancel.textContent = "Cancel";
+      metadataCancel.style.marginLeft = "8px";
+      metadataDialog.append(metadataMessage, metadataChoose, metadataCancel);
+      document.body.appendChild(metadataDialog);
+      metadataChoose.addEventListener("click", function () {
+        metadataDialog.close();
+        binMetadataInput.click();
+      });
+      const cancelMetadataSelection = function () {
+        pendingBinFile = null;
+        pendingBinImage = null;
+        setStatus("ready", "Binary file loading cancelled.");
+      };
+      metadataCancel.addEventListener("click", function () { metadataDialog.close(); cancelMetadataSelection(); });
+      metadataDialog.addEventListener("cancel", cancelMetadataSelection);
+
+      function requestBinMetadata(file) {
+        const expectedName = file.name.replace(/\.bin$/i, "_info.txt");
+        metadataMessage.textContent = "Select the metadata text file for " + file.name + ". Expected filename: " + expectedName;
+        setStatus("ready", "Choose metadata file: " + expectedName);
+        metadataDialog.showModal();
+      }
 
       function byId(id) { return document.getElementById(id); }
 
@@ -5825,6 +5958,8 @@ def browser_action_catalog():
         const preview = byId("imagePreview");
         const button = byId("imageNameButton");
         const activeImage = view && view.images && view.images[view.active_image];
+        const imageCount = view && Array.isArray(view.images) ? view.images.length : 0;
+        byId("imageCounter").textContent = "Image " + (activeImage ? Number(view.active_image) + 1 : 0) + " of " + imageCount;
         preview.replaceChildren();
         if (!activeImage) {
           drawPlaceholderCell(preview);
@@ -6025,7 +6160,19 @@ def browser_action_catalog():
         byId("dwellInput").value = Number.isFinite(sourceDwellUs) && sourceDwellUs > 0
           ? String(sourceDwellUs) : "";
         setDatasets(file);
-        if (file && file.preview) drawPreview(file.preview);
+        if (file && file.preview) {
+          drawPreview(file.preview);
+          const chunk = file.preview.chunk;
+          if (chunk && Number(chunk.count) > 0) {
+            byId("chunkNumberInput").max = String(Number(chunk.count) - 1);
+            byId("chunkNumberInput").value = String(chunk.index);
+            byId("chunkOnInput").checked = chunk.enabled !== false;
+          } else {
+            byId("chunkNumberInput").value = "0";
+            byId("chunkNumberInput").removeAttribute("max");
+            byId("chunkOnInput").checked = true;
+          }
+        }
         else drawPreview(startupPreviewData || syntheticPreview());
         const analysisSelect = byId("analysisSelect");
         if (analysisSelect) {
@@ -6048,7 +6195,7 @@ def browser_action_catalog():
               (analysis.fits || []).forEach(function (fit) {
                 const fitOption = document.createElement("option");
                 fitOption.value = "fit:" + index + ":" + fit.index;
-                fitOption.textContent = "↳ Fit " + (fit.index + 1) + ": " + fit.model;
+                fitOption.textContent = "\u00a0\u00a0\u00a0\u00a0↳ Fit " + (fit.index + 1) + ": " + fit.model;
                 fitOption.selected = index === Number(file.active_analysis) &&
                   file.active_fit_index !== null && file.active_fit_index !== undefined &&
                   fit.index === Number(file.active_fit_index);
@@ -6178,7 +6325,9 @@ def browser_action_catalog():
           line.context.fillText("Photon count rate (kHz)", 0, 0);
           line.context.restore();
         }
-        const print = canvasContext(byId("fingerprintCanvas"), 128, 128);
+        const fingerprintCanvas = byId("fingerprintCanvas");
+        const fingerprintSize = Math.max(1, Math.floor(fingerprintCanvas.getBoundingClientRect().width || 128));
+        const print = canvasContext(fingerprintCanvas, 128, fingerprintSize);
         const fingerprint = preview.fingerprint || [];
         print.context.fillStyle = palette.background;
         print.context.fillRect(0, 0, print.width, print.height);
@@ -6189,6 +6338,18 @@ def browser_action_catalog():
         const minimum = finiteValues.length ? Math.min.apply(null, finiteValues) : 0;
         const maximum = finiteValues.length ? Math.max.apply(null, finiteValues) : 0;
         const inferno = [[0, 0, 0], [66, 10, 104], [147, 38, 103], [221, 81, 58], [252, 164, 54], [252, 255, 164]];
+        const scaleBar = byId("fingerprintScaleBar");
+        scaleBar.style.background = maximum > minimum
+          ? "linear-gradient(to right, " + inferno.map(function (color) { return "rgb(" + color.join(",") + ")"; }).join(", ") + ")"
+          : "rgb(0, 0, 0)";
+        const formatScale = function (value) {
+          return Math.abs(value) >= 10000 || (value !== 0 && Math.abs(value) < .001)
+            ? value.toExponential(2) : String(Number(value.toPrecision(4)));
+        };
+        byId("fingerprintScaleMin").textContent = finiteValues.length ? formatScale(minimum) : "—";
+        byId("fingerprintScaleMax").textContent = finiteValues.length ? formatScale(maximum) : "—";
+        byId("fingerprintScaleMin").title = finiteValues.length ? String(minimum) : "";
+        byId("fingerprintScaleMax").title = finiteValues.length ? String(maximum) : "";
         const colorFor = function (value) {
           const intensity = Number.isFinite(value) && maximum > minimum
             ? Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum))) : 0;
@@ -6607,6 +6768,7 @@ def browser_action_catalog():
           byId("algorithm").value = response.algorithm;
         }
         if (response.preview) drawPreview(response.preview);
+        if (response.show_chunks_mode) byId("showChunksCorrSelect").value = response.show_chunks_mode;
         if (response.fingerprint) drawPreview({ fingerprint: response.fingerprint, total: [], step: 1 });
         if (response.active_chunks) {
           const chunkIndex = Number.isFinite(Number(response.selected_chunk))
@@ -6622,6 +6784,17 @@ def browser_action_catalog():
         if (response.result) renderResult(response.result, response.fit);
         else if (response.clear_result) clearResult();
         if (response.fit_values) Object.entries(response.fit_values).forEach(function (item) { byId(item[0]).value = item[1]; });
+        if (response.fit) {
+          const fitCurves = Array.isArray(response.fit.fits) ? response.fit.fits : [response.fit];
+          const showStoredValues = function (key, target) {
+            const values = fitCurves.map(function (curve) { return curve[key]; });
+            if (values.length && values.every(function (value) { return value !== null && value !== undefined && Number.isFinite(Number(value)); }))
+              byId(target).value = values.map(function (value) { return String(Number(Number(value).toPrecision(8))); }).join(", ");
+          };
+          showStoredValues("w0", "beamWaistInput");
+          showStoredValues("D", "diffusionCoefficientInput");
+        }
+        if (response.diffusion_fields) Object.entries(response.diffusion_fields).forEach(function (item) { byId(item[0]).value = item[1]; });
         if (response.result && response.fit && response.fit_values) {
           const firstFit = response.fit.fits ? response.fit.fits[0] : response.fit;
           const taus = Array.isArray(response.result.tau_s[0]) ? response.result.tau_s[0] : response.result.tau_s;
@@ -6707,6 +6880,13 @@ def browser_action_catalog():
             try {
             setStatus("starting", "Running Python handler: " + handlerName + "…");
             await waitForBusyPaint();
+            if ((handlerName === "newfit" || handlerName === "overwritefit") && byId("showChunksCorrSelect").value !== "average") {
+              byId("showChunksCorrSelect").value = "average";
+              applyResponse(await dispatchPythonHandler("show_chunks_corr_change", {values: formValues()}));
+              payload.values.showChunksCorrSelect = "average";
+              setStatus("starting", "Fitting the average of enabled chunks…");
+              await waitForBusyPaint();
+            }
             applyResponse(await dispatchPythonHandler(handlerName, payload));
           } catch (error) {
               setStatus("error", "Python handler failed: " + describeError(error));
@@ -6716,6 +6896,132 @@ def browser_action_catalog():
       }
 
       function bindBrowserOnlyInputs() {
+        // Keep the example accessible by keyboard navigation; dismiss it
+        // after an actual click, edit, or activation, including its own click.
+        const dismissExample = function () {
+          byId("loadExampleButton").hidden = true;
+          byId("giveTourButton").hidden = true;
+        };
+        document.addEventListener("click", dismissExample, {once: true});
+        document.addEventListener("input", dismissExample, {once: true});
+        document.addEventListener("change", dismissExample, {once: true});
+        async function loadExampleSession() {
+          if (!pyodide) { setStatus("error", "Browser Python is still starting."); return false; }
+          const hasFiles = activeView && (activeView.images || []).some(function (image) { return (image.files || []).length > 0; });
+          if (hasFiles && !window.confirm("Loading the example replaces the current session. Unsaved changes will be lost. Continue?")) return false;
+          const source = "https://raw.githubusercontent.com/VicidominiLab/BrightEyes-FFS-GUI/master/examples/00_Example_HEKcells_GFP.ffs";
+          const path = "/work/example_session_" + (++uploadNumber) + ".ffs";
+          let stream = null;
+          try {
+            setStatus("starting", "Downloading the example session from GitHub…");
+            await waitForBusyPaint();
+            const response = await fetch(source);
+            if (!response.ok) throw new Error("GitHub returned HTTP " + response.status + ".");
+            pyodide.FS.mkdirTree("/work");
+            stream = pyodide.FS.open(path, "w+");
+            let position = 0;
+            if (response.body && response.body.getReader) {
+              const reader = response.body.getReader();
+              while (true) {
+                const part = await reader.read();
+                if (part.done) break;
+                pyodide.FS.write(stream, part.value, 0, part.value.length, position);
+                position += part.value.length;
+              }
+            } else {
+              const bytes = new Uint8Array(await response.arrayBuffer());
+              pyodide.FS.write(stream, bytes, 0, bytes.length, 0);
+            }
+            pyodide.FS.close(stream); stream = null;
+            setStatus("starting", "Opening the example session…");
+            await waitForBusyPaint();
+            const result = await callPython("browser_restore_ffs(browser_example_path)", {browser_example_path: path});
+            h5FilesByTab.clear();
+            imageUrls.forEach(function (url) { if (url) URL.revokeObjectURL(url); });
+            imageUrls.length = 0;
+            lastRenderedFileKey = null;
+            applyResponse(result);
+            return true;
+          } catch (error) {
+            setStatus("error", "Could not load the example from GitHub: " + describeError(error));
+            return false;
+          } finally {
+            if (stream) pyodide.FS.close(stream);
+            try { pyodide.FS.unlink(path); } catch (_) { /* No temporary file was created. */ }
+          }
+        }
+        byId("loadExampleButton").addEventListener("click", loadExampleSession);
+
+        const tourSteps = [
+          {selector: "#imageNameButton", title: "Open an image", text: "Choose a cell image here. Measurement positions appear on it, helping you see where each FFS file was recorded."},
+          {selector: "#newFileButton", title: "Add an FFS file", text: "Use New file to load a measurement. Each file has its own tab, correlations and fits; the example session already contains measurements."},
+          {selector: ".calculate-panel", title: "Calculate correlations", text: "Choose the detector, correlation mode, algorithm, chunk size and precision, then select Calculate now. Original raw data must be loaded separately to calculate new correlations."},
+          {selector: ".chunks-panel", title: "Inspect chunks", text: "Select a chunk to inspect it in the time trace and correlation plot. Turn bad chunks off individually, filter them automatically, or use all chunks."},
+          {selector: '[aria-labelledby="fitControlsHeading"]', title: "Fit the correlation", text: "Choose a model, starting values, fit range and which parameters to fit. New fit uses the average of the enabled chunks."},
+          {selector: '[aria-labelledby="diffusionControlsHeading"]', title: "Diffusion law", text: "Enter beam-waist values and update the diffusion analysis to plot fitted diffusion time against beam waist squared."},
+          {selector: '[data-python-handler="save_session"]', title: "Save the session", text: "Use Save session (.ffs) in Desktop menu commands to download the images, correlations, chunk settings and fits. Raw measurement files are not embedded.", openDrawer: true}
+        ];
+        const tourSpot = document.createElement("div");
+        const tourCard = document.createElement("section");
+        tourSpot.className = "tour-spotlight"; tourSpot.hidden = true;
+        tourCard.className = "tour-card"; tourCard.hidden = true;
+        tourCard.setAttribute("role", "dialog");
+        tourCard.setAttribute("aria-modal", "false");
+        tourCard.setAttribute("aria-labelledby", "tourTitle");
+        tourCard.innerHTML = '<div class="tour-progress" id="tourProgress"></div><h2 id="tourTitle"></h2><p id="tourDescription"></p><div class="tour-actions"><button type="button" class="tool-button" id="tourClose">Close</button><button type="button" class="tool-button" id="tourBack">Back</button><button type="button" class="tool-button" id="tourNext">Next</button></div>';
+        document.body.append(tourSpot, tourCard);
+        let tourIndex = 0, tourTarget = null, drawerInitiallyOpen = false;
+        const drawer = document.querySelector(".command-drawer");
+        function positionTourSpot() {
+          if (!tourTarget || tourCard.hidden) return;
+          const rect = tourTarget.getBoundingClientRect();
+          const left = Math.max(3, rect.left - 5), top = Math.max(3, rect.top - 5);
+          const right = Math.min(window.innerWidth - 3, rect.right + 5);
+          const bottom = Math.min(window.innerHeight - 3, rect.bottom + 5);
+          tourSpot.style.left = left + "px"; tourSpot.style.top = top + "px";
+          tourSpot.style.width = Math.max(0, right - left) + "px";
+          tourSpot.style.height = Math.max(0, bottom - top) + "px";
+        }
+        function showTourStep(index) {
+          tourIndex = index;
+          const step = tourSteps[index];
+          if (step.openDrawer && drawer) drawer.open = true;
+          else if (drawer && !drawerInitiallyOpen) drawer.open = false;
+          tourTarget = document.querySelector(step.selector);
+          if (!tourTarget) { endTour(); setStatus("error", "A tour control could not be found."); return; }
+          byId("tourProgress").textContent = "Step " + (index + 1) + " of " + tourSteps.length;
+          byId("tourTitle").textContent = step.title;
+          byId("tourDescription").textContent = step.text;
+          byId("tourBack").disabled = index === 0;
+          byId("tourNext").textContent = index === tourSteps.length - 1 ? "Finish" : "Next";
+          tourCard.hidden = false; tourSpot.hidden = false;
+          tourTarget.scrollIntoView({block: "center", inline: "nearest", behavior: "instant"});
+          requestAnimationFrame(positionTourSpot);
+        }
+        function endTour() {
+          tourSpot.hidden = true; tourCard.hidden = true; tourTarget = null;
+          if (drawer && !drawerInitiallyOpen) drawer.open = false;
+          byId("giveTourButton").hidden = true;
+        }
+        byId("giveTourButton").addEventListener("click", async function () {
+          const button = byId("giveTourButton");
+          button.disabled = true;
+          try {
+            if (await loadExampleSession()) {
+              drawerInitiallyOpen = !!(drawer && drawer.open);
+              showTourStep(0);
+              byId("tourNext").focus();
+            }
+          } finally { button.disabled = false; }
+        });
+        byId("tourNext").addEventListener("click", function () {
+          if (tourIndex + 1 >= tourSteps.length) endTour(); else showTourStep(tourIndex + 1);
+        });
+        byId("tourBack").addEventListener("click", function () { if (tourIndex > 0) showTourStep(tourIndex - 1); });
+        byId("tourClose").addEventListener("click", endTour);
+        window.addEventListener("resize", positionTourSpot);
+        window.addEventListener("scroll", positionTourSpot, {passive: true});
+        document.addEventListener("keydown", function (event) { if (event.key === "Escape" && !tourCard.hidden) endTour(); });
         const fileTabList = byId("fileTabList");
         fileTabList.addEventListener("pointerover", function (event) {
           const tab = event.target.closest("button[data-file-index]");
@@ -6863,6 +7169,12 @@ def browser_action_catalog():
         fileInput.addEventListener("change", async function () {
           const file = fileInput.files[0];
           if (!file) return;
+          if (/\.bin$/i.test(file.name)) {
+            pendingBinFile = file;
+            fileInput.value = "";
+            requestBinMetadata(file);
+            return;
+          }
           try {
             // A newly loaded file starts with its raw-data inspector closed.
             byId("datasetZone").open = false;
@@ -6876,9 +7188,63 @@ def browser_action_catalog():
             fileInput.value = "";
           }
         });
+        binMetadataInput.addEventListener("cancel", function () {
+          pendingBinFile = null;
+          pendingBinImage = null;
+          setStatus("ready", "Binary file loading cancelled; metadata file was not selected.");
+        });
+        binMetadataInput.addEventListener("change", async function () {
+          const metadataFile = binMetadataInput.files[0];
+          const binFile = pendingBinFile;
+          const binImage = pendingBinImage;
+          pendingBinFile = null;
+          pendingBinImage = null;
+          if (!metadataFile || (!binFile && !binImage)) return;
+          try {
+            if (binImage) {
+              setStatus("starting", "Loading binary image " + binImage.file.name + "…");
+              await waitForBusyPaint();
+              const metadata = await uploadFile(metadataFile, 'json.dumps({"path": browser_upload_path})');
+              const response = await uploadFile(binImage.file,
+                "browser_load_bin_image(browser_upload_path, browser_upload_name, browser_bin_metadata_path, browser_replace_image)",
+                {browser_bin_metadata_path: metadata.path, browser_replace_image: binImage.replace});
+              applyResponse(response);
+              return;
+            }
+            byId("datasetZone").open = false;
+            setStatus("starting", "Loading metadata and converting " + binFile.name + " to H5…");
+            await waitForBusyPaint();
+            const metadata = await uploadFile(metadataFile, 'json.dumps({"path": browser_upload_path})');
+            const response = await uploadFile(binFile,
+              "browser_convert_bin_and_load(browser_upload_path, browser_upload_name, browser_bin_metadata_path)",
+              { browser_bin_metadata_path: metadata.path });
+            applyResponse(response);
+            if (!response.error && response.converted_h5_path) {
+              // Read the completed virtual H5 as bytes, without a base64 copy.
+              const bytes = pyodide.FS.readFile(response.converted_h5_path);
+              const url = URL.createObjectURL(new Blob([bytes], {type: "application/x-hdf5"}));
+              const anchor = document.createElement("a");
+              anchor.href = url;
+              anchor.download = response.converted_h5_name;
+              anchor.click();
+              setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            }
+          } catch (error) {
+            setStatus("error", "Could not convert or load binary file: " + describeError(error));
+          } finally {
+            binMetadataInput.value = "";
+          }
+        });
         imageInput.addEventListener("change", async function () {
           const file = imageInput.files[0];
           if (!file) return;
+          if (/\.bin$/i.test(file.name)) {
+            pendingBinImage = {file: file, replace: imageInput.dataset.replace === "true"};
+            imageInput.value = "";
+            imageInput.dataset.replace = "";
+            requestBinMetadata(file);
+            return;
+          }
           try {
             const response = await uploadFile(file, "browser_load_image_file(browser_upload_path, browser_upload_name, browser_replace_image)", {
               browser_replace_image: imageInput.dataset.replace === "true"
@@ -6928,7 +7294,7 @@ def browser_action_catalog():
             setStatus("starting", "Updating chunk display…");
             applyResponse(await dispatchPythonHandler("show_chunks_corr_change", {
               button_id: "showChunksCorrSelect",
-              button_label: "Show chunk correlation",
+              button_label: "Show correlation",
               button_data: {},
               values: formValues()
             }));
@@ -6941,7 +7307,7 @@ def browser_action_catalog():
             setStatus("starting", "Updating chunk state…");
             applyResponse(await dispatchPythonHandler("chunk_checkbox_change", {
               button_id: "chunkOnInput",
-              button_label: "Use current chunk",
+              button_label: "Chunk on",
               button_data: {},
               values: formValues()
             }));
