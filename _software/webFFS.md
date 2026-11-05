@@ -12,4 +12,4 @@ layout: archive
 ---
 
 
-<p>Analyze Fluorescence Fluctuation Spectroscopy data from SPAD array detectors with <a href="webFFS.html">Web-FFS</a></p>
+<p>Analyze Fluorescence Fluctuation Spectroscopy data from SPAD array detectors with <a href="../../software/webFFS.html">Web-FFS</a></p>
