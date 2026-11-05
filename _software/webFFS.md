@@ -11,4 +11,4 @@ header:
 layout: archive
 ---
 
-<p><a href="optodynamics.github.io\_software\webFFS\index.html">Web-FFS</a></p>
+<p><a href="index.html">Web-FFS</a></p>
