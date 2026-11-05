@@ -6,8 +6,6 @@ author_profile: true
 ---
 {% include base_path %}
 
-some subtitle
-
 <div class="grid">
   <div class="wrapper">
     {% for post in site.software %}
