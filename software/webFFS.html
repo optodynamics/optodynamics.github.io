@@ -11,7 +11,7 @@
         // Light is the initial appearance.  A theme explicitly selected by
         // the user is still remembered for subsequent visits.
         document.documentElement.dataset.theme = localStorage.getItem("webffs-theme") || "light";
-      } catch (_) {
+      } catch (_) { 
         document.documentElement.dataset.theme = "light";
       }
     }());
