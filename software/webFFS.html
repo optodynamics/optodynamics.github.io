@@ -11,7 +11,7 @@
         // Light is the initial appearance.  A theme explicitly selected by
         // the user is still remembered for subsequent visits.
         document.documentElement.dataset.theme = localStorage.getItem("webffs-theme") || "light";
-      } catch (_) { 
+      } catch (_) {
         document.documentElement.dataset.theme = "light";
       }
     }());
@@ -1592,7 +1592,7 @@
         </div>
         <div class="panel-body">
           <label class="file-picker">
-            <input id="fileInput" type="file" accept=".h5,.hdf5,.ptu,.bin,application/x-hdf5,application/x-hdf5-file">
+            <input id="fileInput" type="file" accept=".h5,.hdf5,.ptu,.bin,.mat,application/x-hdf5,application/x-hdf5-file">
             <span>
               <strong>Select a local H5 file</strong>
               <span>Canonical BrightEyes files use <b>/data</b> with time in rows and detector channels in columns.</span>
@@ -1773,8 +1773,8 @@
         <button class="tool-button" type="button" data-python-handler="remove_current_image">Current image</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
         <button class="tool-button" type="button" data-python-handler="copy_current_correlation">Copy current correlation</button>
-        <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Create Jupyter Notebook</button>
-        <button class="tool-button" type="button" data-python-handler="plot_jupyter_notebook">Plot in Jupyter Notebook</button>
+        <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Notebook: redo analysis</button>
+        <button class="tool-button" type="button" data-python-handler="plot_jupyter_notebook">Notebook: read saved session</button>
         <button class="tool-button" type="button" data-python-handler="export_session_xlsx">Export results to Excel</button>
         <button class="tool-button" type="button" data-python-handler="export_corr_xlsx">Export correlation to Excel</button>
         <button class="tool-button" type="button" data-python-handler="difflaw_change">Refresh diffusion-law plot</button>
@@ -2119,17 +2119,17 @@ def _desktop_crosscorrelation_params(det_type='Square 5x5'):
         avList = [avList[i] for i in range(len(avList)) if i not in idx_empty]
         listOfX = [listOfX[i] for i in range(len(listOfX)) if i not in idx_empty]
         listOfY = [listOfY[i] for i in range(len(listOfY)) if i not in idx_empty]
-        
+
         avListStr = []
         for avSingleDist in avList:
             avstr = ''
             for j in avSingleDist:
                 avstr += str(j[0]) + 'x' + str(j[1]) + '+'
             avListStr.append(avstr[0:-1])
-            
+
         elements = ['V'+str(listOfY[i])+'_H'+str(listOfX[i]) for i in range(len(listOfX))]
         average = avListStr
-    
+
     elif det_type == 'PDA-23':
         elements = []
         for angle in [0, 60, 120, 180, 240, 300]:
@@ -2148,7 +2148,7 @@ def _desktop_crosscorrelation_params(det_type='Square 5x5'):
                    '17x12+22x17+16x11+21x16+26x21+15x10+20x15+25x20+30x25+19x14+24x19+29x24+23x18+28x23',
                    '22x12+21x11+26x16+20x10+25x15+30x20+24x14+29x19+28x18'
                    ]
-    
+
     elif det_type == 'Airyscan 32':
         elements = []
         for angle in [0, 60, 120, 180, 240, 300]:
@@ -2179,21 +2179,21 @@ def _desktop_crosscorrelation_params(det_type='Square 5x5'):
         avList = [avList[i] for i in range(len(avList)) if i not in idx_empty]
         listOfX = [listOfX[i] for i in range(len(listOfX)) if i not in idx_empty]
         listOfY = [listOfY[i] for i in range(len(listOfY)) if i not in idx_empty]
-        
+
         avListStr = []
         for avSingleDist in avList:
             avstr = ''
             for j in avSingleDist:
                 avstr += str(j[0]) + 'x' + str(j[1]) + '+'
             avListStr.append(avstr[0:-1])
-            
+
         elements = ['V'+str(listOfY[i])+'_H'+str(listOfX[i]) for i in range(len(listOfX))]
         average = avListStr
-    
+
     listOfG = ['crossAll']
     mode = 'All cross-correlations'
     shortlabel = 'Crosscorrs'
-    
+
     return {
         "mode"       : mode,
         "elements"   : elements,
@@ -2273,24 +2273,38 @@ def calculate_tcspc_correlation(input_path, values):
     if values.get("detectorType") == "pi-imaging-pda23" and detected_type == "custom":
         values["detectorType"] = "custom"
     list_of_g, elements, average = _desktop_correlation_request(values)
-    corrs, _ = atimes_file_2_corr(
-        input_path,
-        list_of_g=list_of_g,
-        accuracy=_browser_int(values.get("lagInput"), 16),
-        split=_browser_number(values.get("chunkSizeInput"), 1.0),
-        time_trace=True,
-        list_of_g_out=elements,
-        averaging=average,
-        # The current BrightEyes-FFS package performs the exact desktop
-        # calculation without starting joblib workers in this mode.
-        parallel_prefer="sequential",
-    )
+    dwell_us = _tcspc_source_dwell_us(raw_data=raw_data, filename=input_path)
+    duration_s = _tcspc_duration_seconds(raw_data)
+    # atimes_file_2_corr loads the file itself.  Keeping our inspection copy
+    # alive during that call doubles the detector streams in WebAssembly memory.
+    del raw_data
+    import gc
+    gc.collect()
+    try:
+        corrs, _ = atimes_file_2_corr(
+            input_path,
+            list_of_g=list_of_g,
+            accuracy=_browser_int(values.get("lagInput"), 16),
+            split=_browser_number(values.get("chunkSizeInput"), 1.0),
+            time_trace=True,
+            list_of_g_out=elements,
+            averaging=average,
+            # Use the package's desktop calculation without joblib workers.
+            parallel_prefer="sequential",
+        )
+    except MemoryError as error:
+        raise MemoryError(
+            "The browser ran out of memory while combining detector streams. "
+            "The package currently loads and combines entire streams before "
+            "splitting them into correlation chunks, so a smaller chunk size "
+            "may not reduce this peak. Try a smaller file or the desktop app."
+        ) from error
     return (
         _native_correlations_to_result(
             corrs,
             "TCSPC correlation",
-            dwell_us=_tcspc_source_dwell_us(raw_data=raw_data, filename=input_path),
-            duration_s=_tcspc_duration_seconds(raw_data),
+            dwell_us=dwell_us,
+            duration_s=duration_s,
         ),
         corrs,
     )
@@ -3652,7 +3666,8 @@ def _browser_file_view(ffs_file, index):
         "selected_tcspc_channel": getattr(ffs_file, "browser_selected_tcspc_channel", None),
         "rows_preview": getattr(ffs_file, "browser_rows_preview", None),
         "preview": getattr(ffs_file, "browser_preview", None),
-        "loaded": bool(getattr(ffs_file, "browser_input_path", None) or getattr(ffs_file, "browser_restored", False)),
+        "loaded": bool(getattr(ffs_file, "browser_input_path", None) or getattr(ffs_file, "browser_restored", False) or getattr(ffs_file, "browser_raw_released", False)),
+        "raw_available": bool(getattr(ffs_file, "browser_input_path", None)),
         "has_result": isinstance(getattr(ffs_file, "browser_result", None), dict),
         "has_fit": isinstance(getattr(ffs_file, "browser_fit", None), dict),
         "analyses": ffs_file.num_analyses,
@@ -3708,7 +3723,7 @@ def _browser_response(message, **extra):
 
 def browser_toggle_favourite():
     ffs_file = _browser_current_file()
-    if ffs_file is None or not (getattr(ffs_file, "browser_input_path", None) or getattr(ffs_file, "browser_restored", False)):
+    if ffs_file is None or not (getattr(ffs_file, "browser_input_path", None) or getattr(ffs_file, "browser_restored", False) or getattr(ffs_file, "browser_raw_released", False)):
         raise ValueError("Load a file first.")
     ffs_file.mark_as_favourite = not bool(getattr(ffs_file, "mark_as_favourite", False))
     return _browser_response("Favourite updated.")
@@ -3962,6 +3977,88 @@ def _browser_reset_loaded_file(ffs_file):
     ffs_file.airy = None
 
 
+def browser_release_raw_data():
+    """Retain compact traces and remove the previously uploaded raw copy."""
+    import gc
+    import os
+    released = []
+    for image in ffslib.lib:
+        for item in image.ffs_list:
+            path = getattr(item, "browser_input_path", None)
+            if not path:
+                continue
+            # Never delete anything other than this app's own temporary uploads.
+            if not re.fullmatch(r"/work/browser_upload_\d+_[A-Za-z0-9_.-]+", str(path)):
+                raise ValueError("Cannot release an unrecognized raw-data path.")
+            if item.timetrace is None and getattr(item, "browser_data_kind", None) == "time_trace":
+                item.timetrace = compressed_count_trace(path, item.browser_dataset_path)
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            item.browser_input_path = None
+            item.browser_raw_released = True
+            released.append(str(item.fname))
+    if released:
+        gc.collect()
+    return _browser_response("Previous raw data released; calculated results were kept.", released=released)
+
+
+def browser_reconnect_raw(input_path, fname):
+    """Reattach a user-selected raw file without resetting existing analyses."""
+    import os
+    item = _browser_current_file()
+    if item is None:
+        raise ValueError("Select the original file tab before reloading its raw data.")
+    expected = str(getattr(item, "browser_original_name", None) or item.fname or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if expected and str(fname).lower() != expected.lower():
+        raise ValueError("Please select the original raw file: " + expected)
+    if str(input_path).lower().endswith((".h5", ".hdf5")):
+        info = json.loads(inspect_h5(input_path))
+        expected_kind = getattr(item, "browser_data_kind", None)
+        if expected_kind and info["data_kind"] != expected_kind:
+            raise ValueError("The selected file has a different data layout from the original.")
+        dataset = getattr(item, "browser_dataset_path", None)
+        expected_shape = getattr(item, "browser_dataset_shape", None)
+        if expected_kind == "time_trace" and dataset:
+            shape = _count_dataset_shape(input_path, dataset)
+            if expected_shape is not None and tuple(expected_shape) != tuple(shape):
+                raise ValueError("The selected file's dataset dimensions do not match the original.")
+        if expected_kind == "tcspc":
+            old_channels = getattr(item, "browser_tcspc_channels", None)
+            new_channels = sorted(int(re.search(r"det(\d+)$", p).group(1)) for p in info["tcspc_channels"])
+            if old_channels and list(old_channels) != new_channels:
+                raise ValueError("The detector channels do not match the original file.")
+        if not expected_kind:
+            item.browser_data_kind = info["data_kind"]
+            item.browser_datasets = info["datasets"]
+            if info["data_kind"] == "tcspc":
+                item.browser_tcspc_channels = sorted(int(re.search(r"det(\d+)$", p).group(1)) for p in info["tcspc_channels"])
+                item.browser_selected_tcspc_channel = item.browser_tcspc_channels[0] if item.browser_tcspc_channels else None
+            else:
+                datasets = [d for d in info["datasets"] if d["numeric"] and d["rank"] >= 2]
+                if not datasets: raise ValueError("No numeric count dataset found in the selected H5 file.")
+                item.browser_dataset_path = datasets[0]["path"]
+                item.browser_dataset_shape = _count_dataset_shape(input_path, item.browser_dataset_path)
+    elif str(fname).lower().endswith(".ptu") and not getattr(item, "browser_data_kind", None):
+        raw = _browser_load_atimes_data(input_path)
+        fields = _tcspc_detector_fields(raw)
+        if not fields: raise ValueError("No detector streams found in the selected PTU file.")
+        item.browser_data_kind = "tcspc"
+        item.browser_tcspc_channels = [channel for channel, _ in fields]
+        item.browser_selected_tcspc_channel = item.browser_tcspc_channels[0]
+    item.browser_input_path = input_path
+    item.browser_raw_released = False
+    return _browser_response("Original raw data reloaded. Click Calculate now to process it.",
+                             preview=_browser_analysis_preview(item, _browser_active_analysis(item)))
+
+
+def _browser_request_raw_reload(ffs_file):
+    expected = str(getattr(ffs_file, "browser_original_name", None) or ffs_file.fname or "").replace("\\", "/").rsplit("/", 1)[-1]
+    return _browser_response("Reload the original raw file before processing this measurement.",
+                             browser_action="request_raw_reload", expected_raw_name=expected)
+
+
 def browser_load_data_file(input_path, fname):
     """Register a binned count trace or a TCSPC photon-arrival file."""
     suffix = str(fname).lower().rsplit(".", 1)[-1] if "." in str(fname) else ""
@@ -3972,6 +4069,8 @@ def browser_load_data_file(input_path, fname):
     if not ffs_file.label or ffs_file.label.startswith("File "):
         ffs_file.label = str(fname)
     ffs_file.browser_input_path = input_path
+    ffs_file.browser_original_name = str(fname)
+    ffs_file.browser_raw_released = False
     if suffix == "ptu":
         # PTU is a native TCSPC container.  Use the same package loader used
         # by the desktop app, which also gives us a displayable count trace
@@ -4037,19 +4136,66 @@ def browser_load_data_file(input_path, fname):
     )
 
 
-def browser_convert_bin_and_load(input_path, fname, metadata_path):
+def browser_convert_mat_and_load(input_path, fname, reconnect=False):
+    """Convert a Genoa Instruments MAT trace using the package's MAT/H5 writer."""
+    import os
+    from brighteyes_ffs.fcs.meas_to_count import mat2h5
+
+    output_path = os.path.splitext(input_path)[0] + '.h5'
+    try:
+        # mat2h5 reads the CARMA structure and calls numpy2h5, preserving
+        # its channel layout and microsecond dwell-time metadata.
+        converted_path = mat2h5(input_path)
+        if os.path.abspath(str(converted_path)) != os.path.abspath(output_path):
+            raise ValueError('The MAT converter returned an unexpected H5 path.')
+        output_name = os.path.splitext(str(fname))[0] + '.h5'
+        response = json.loads(browser_reconnect_raw(output_path, fname) if reconnect
+                              else browser_load_data_file(output_path, output_name))
+    except Exception:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise
+    finally:
+        if os.path.exists(input_path):
+            os.remove(input_path)
+    _browser_current_file().browser_original_name = str(fname)
+    response['view'] = _browser_view()
+    response['converted_h5_path'] = output_path
+    response['converted_h5_name'] = output_name
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
+
+
+def browser_convert_bin_and_load(input_path, fname, metadata_path, reconnect=False):
     """Use the package converter and open its weighted-arrival H5 output."""
     import os
     import shutil
-    from brighteyes_ffs.fcs.fcsbin2h5 import fcsbin2h5_atimes
+    from brighteyes_ffs.fcs.fcsbin2h5 import fcsbin2atimes, photon_data_2_h5
 
     stem = os.path.splitext(input_path)[0]
     # The desktop metadata loader expects a sibling named <stem>_info.txt.
-    shutil.copyfile(metadata_path, stem + "_info.txt")
+    companion_path = stem + "_info.txt"
+    shutil.copyfile(metadata_path, companion_path)
     output_path = stem + ".h5"
-    fcsbin2h5_atimes(input_path, output_path)
+    try:
+        photon_data = fcsbin2atimes(input_path, chunksize=10_000_000)
+        photon_data_2_h5(photon_data, output_path)
+        # The H5 loader reads the converted streams again. Do not retain the
+        # intermediate arrival-time object during that load.
+        del photon_data
+    except Exception:
+        if os.path.exists(output_path): os.remove(output_path)
+        raise
+    finally:
+        for temporary in (input_path, companion_path):
+            if os.path.exists(temporary): os.remove(temporary)
     output_name = os.path.splitext(str(fname))[0] + ".h5"
-    response = json.loads(browser_load_data_file(output_path, output_name))
+    try:
+        response = json.loads(browser_reconnect_raw(output_path, fname) if reconnect else browser_load_data_file(output_path, output_name))
+    except Exception:
+        if os.path.exists(output_path): os.remove(output_path)
+        raise
+    _browser_current_file().browser_original_name = str(fname)
+    response["view"] = _browser_view()
     response["converted_h5_path"] = output_path
     response["converted_h5_name"] = output_name
     return json.dumps(response, allow_nan=False, default=_browser_json_default)
@@ -4060,6 +4206,9 @@ def browser_load_data_file_safe(input_path, fname):
     try:
         return browser_load_data_file(input_path, fname)
     except Exception as error:
+        item = _browser_current_file()
+        if item is not None and getattr(item, "browser_input_path", None) == input_path:
+            item.browser_input_path = None
         detail = type(error).__name__ + ": " + (str(error).strip() or repr(error))
         return _browser_response(
             "Could not load " + str(fname) + ".",
@@ -4338,7 +4487,9 @@ def save_notes(payload=None):
 def calc_corr_active_file(payload=None):
     """Browser equivalent of MainWindow.calc_corr_active_file."""
     ffs_file = _browser_current_file()
-    if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
+    if ffs_file is not None and not getattr(ffs_file, "browser_input_path", None):
+        return _browser_request_raw_reload(ffs_file)
+    if ffs_file is None:
         return _browser_response("Choose an H5 count-data file before calculating.", browser_action="request_data_file")
     analysis = _browser_active_analysis(ffs_file)
     if analysis is None:
@@ -4646,7 +4797,9 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
 def add_corr_and_calc(payload=None):
     values = _browser_values(payload)
     ffs_file = _browser_current_file()
-    if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
+    if ffs_file is not None and not getattr(ffs_file, "browser_input_path", None):
+        return _browser_request_raw_reload(ffs_file)
+    if ffs_file is None:
         return _browser_response("Choose a time-trace or TCSPC data file before calculating.", browser_action="request_data_file")
     requested_kind = str(values.get("rawDataType") or "auto")
     data_kind = getattr(ffs_file, "browser_data_kind", "time_trace") if requested_kind == "auto" else requested_kind
@@ -5345,38 +5498,157 @@ def difflaw_change(payload=None):
     return update_diffLaw(payload)
 
 
+_DESKTOP_NOTEBOOK_SOURCE = 'import nbformat as nbf\nimport numpy as np\nfrom .fitmodels import get_fit_model_from_name\n\ndef plot_session_in_notebook(ffs_path=r\'D:\\\\brighteyes_saved_session.ffs\', notebook_path="D:\\\\generated_notebook.ipynb"):\n    # Create a new notebook object\n    nb = nbf.v4.new_notebook()\n\n    # Create markdown and code cells\n    cells = [\n        nbf.v4.new_markdown_cell("# Generated Jupyter Notebook"),\n        nbf.v4.new_markdown_cell("Import packages"),\n        nbf.v4.new_code_cell("""from brighteyes_ffs.fcs_gui.read_ffs import read_g_from_ffs, read_ffs_file, restorelib, read_fitresults_from_ffs\nfrom brighteyes_ffs.fcs_gui.timetrace_end import timetrace_end\nfrom brighteyes_ffs.tools.color_from_map import color_from_map\nimport matplotlib.pyplot as plt\nimport numpy as np"""),\n        nbf.v4.new_markdown_cell("Load session from GUI"),\n        nbf.v4.new_code_cell("""ffs_file = \\"""" + ffs_path + """\\""""),\n        nbf.v4.new_markdown_cell("Plot image"),\n        nbf.v4.new_code_cell("""ffslib = restorelib(ffs_file) # read .ffs file\nim_nr = ffslib.active_image    # get image number of open image\nim = ffslib.get_image(im_nr)   # get image from object"""),\n        nbf.v4.new_code_cell("""plt.figure()\nplt.imshow(im.image, cmap=\'hot\')\nk = plt.xticks([])\nk = plt.yticks([])\n\nfor i in range(im.num_files):\n    ffs = im.ffs_list[i]\n    c = ffs.coords\n    plt.scatter(c[1], c[0], color=\'white\')"""),\n        nbf.v4.new_markdown_cell("Plot time trace"),\n        nbf.v4.new_code_cell("""ffs = im.ffs_list[im.active_ffs]\nmd = ffs.metadata\nduration = md.duration # s"""),\n        nbf.v4.new_code_cell("""plt.figure()\nfor i in range(len(ffs.timetrace[0,:])):\n    last_idx = timetrace_end(ffs.timetrace)\n    y = ffs.timetrace[0:last_idx,i]\n    bin_time = duration / len(y)\n    t = np.arange(0, duration, bin_time)    \n    plt.plot(t, y/bin_time/1000)\nplt.xlabel(\'Time (s)\')\nl = plt.ylabel(\'Photon count rate (kHz)\')"""),\n        nbf.v4.new_markdown_cell("""Extract the correlations and fits that are currently open in the GUI  \nUse read=[a, b, c, d] to read a different correlation and fit. Here,  \na = an integer indicating which image number, usually 0  \nb = an integer indicating which file to read  \nc = an integer indicating which correlation to read from that file  \nd = an integer indicating which fit to read from that correlation"""),\n        nbf.v4.new_code_cell("""analysis = read_ffs_file(ffs_file, read=\'active\', returnObj=\'analysis\')\nalgorithm = analysis.settings.algorithm\nG, tau, Gfit, taufit = read_g_from_ffs(ffs_file, read=\'active\')"""),\n        nbf.v4.new_code_cell("""plt.figure()\nfor i in range(np.shape(G)[1]):\n    if algorithm == \'pch\':\n        plt.bar(tau, G[:,i], alpha=0.5, color=color_from_map(np.mod(i, 8), startv=0, stopv=8, cmap=\'Set2\'))\n        #plt.plot(taufit, Gfit[:,i], color=color_from_map(np.mod(i, 8), startv=0, stopv=8, cmap=\'Set2\'))\n    else:\n        plt.scatter(tau, G[:,i], s=20, alpha=0.5, color=color_from_map(np.mod(i, 8), startv=0, stopv=8, cmap=\'Set2\'))\n\nif algorithm == \'pch\':\n    plt.ylim([0,1.05*np.max(G[0:,:])])\n    plt.xlabel(\'Counts\')\n    plt.ylabel(\'Relative frequency\')\n    plt.xscale(\'linear\')\nelse:\n    plt.ylim([0,1.05*np.max(G[1:,:])])\n    plt.xlabel(\'Lag time (s)\')\n    plt.ylabel(\'G\')\n    plt.xscale(\'log\')"""),\n        nbf.v4.new_markdown_cell("Fit results"),\n        nbf.v4.new_code_cell("""print(read_fitresults_from_ffs(ffs_file))"""),\n        nbf.v4.new_code_cell("""# For flow heat map, use\nfit = read_ffs_file(ffs_file, read=\'active\', returnObj=\'fit\')\nheatmap, arrow, columnNotFound = fit.fitresults_flowmap()\nplt.figure()\nplt.imshow(np.flipud(heatmap), cmap=\'PiYG\')\nphi = np.linspace(0, 2*np.pi, 360)\nR = len(heatmap) / 2\nplt.plot(R*np.cos(phi) + R, R*np.sin(phi)+R, \'-\', color=\'k\', linewidth=5)\nr = arrow[0]\nu = arrow[1]\nplt.arrow(90-(r/2), 90-(u/2), r, u, width=1, head_width=4, color=\'k\', length_includes_head=True)\nplt.xlim([-0.1*R, 2.1*R])\nplt.ylim([-0.1*R, 2.1*R])\nplt.axis(\'off\')"""),\n        nbf.v4.new_code_cell("""# For MEM analysis, use\nfitmem, tauD = read_fitresults_from_ffs(ffs_file)\nplt.figure()\nfor i in range(len(fitmem)):\n    plt.scatter(tauD, fitmem[i], s=20, alpha=0.5, color=color_from_map(np.mod(i, 8), startv=0, stopv=8, cmap=\'Set2\'))\n    plt.plot(tauD, fitmem[i], color=color_from_map(np.mod(i, 8), startv=0, stopv=8, cmap=\'Set2\'))\nplt.xscale(\'log\')\nplt.xlabel(\'Diffusion time (s)\')\nplt.ylabel(\'Relative concentration\')"""),\n        \n    ]\n\n    # Add the cells to the notebook\n    nb[\'cells\'] = cells\n\n    # Write the notebook to a file\n    with open(notebook_path, "w") as f:\n        nbf.write(nb, f)\n\n\ndef convert_session_to_notebook(lib, notebook_path):\n    # check image\n    if lib.active_image is None:\n        return "No active image found"\n    image_object = lib.lib[lib.active_image]\n    image_path = image_object.image_name\n    \n    # check correlation file\n    if image_object.active_ffs is None or image_object.get_ffs_file() is None:\n        return "No active FFS file found"\n    ffs_file_object = image_object.get_ffs_file()\n    ffs_file_path = ffs_file_object.fname.replace(\'\\\\\', \'/\')\n    ffs_file_label = ffs_file_object.label\n    ffs_file_object.analysis_list\n    \n    # check analysis\n    analysis_object = ffs_file_object.get_analysis()\n    list_of_g = analysis_object.settings.list_of_g\n    list_of_g_str = list_to_string(list_of_g, element_type=\'auto\')\n    list_of_g_out_str = list_to_string(analysis_object.settings.elements)\n    resolution = str(int(analysis_object.settings.resolution))\n    averaging = analysis_object.settings.average\n    averaging_str = \'None\'\n    if averaging is not None:\n        averaging_str = list_to_string(averaging)\n    algorithm = str(analysis_object.settings.algorithm)\n    if algorithm == \'pch\':\n        import_corr = \'from brighteyes_ffs.fcs.fcs2corr import fcs_load_and_corr_split as correlate\'\n        algorithm_settings_str = \'accuracy=30, binsize=resolution\'\n        algorithm_str = \', algorithm=algorithm\'\n        xlabel = \'Counts per bin\'\n        ylabel = \'Relative frequency\'\n        xscale = \'linear\'\n        yscale = \'log\'\n        fit_str0 = \'nparam = len(param) - 3\'\n        fit_str1 = \'fitresult = fit_pch(Gexp, fit_info[0:nparam], param[0:nparam], psf=list(param[nparam:nparam+2]), fitfun=my_fit_fun, lBounds=lBounds[0:nparam], uBounds=uBounds[0:nparam], n_bins=param[nparam+2], minimization="absolute")\'\n        corr_plot = \'plt.bar(Gsingle[0:,0], Gsingle[0:,1], label=corr, alpha=0.4)\'\n    \n    elif algorithm == \'tt2corr\':\n        import_corr = \'from brighteyes_ffs.fcs.atimes2corrparallel import atimes_file_2_corr as correlate\'\n        algorithm_settings_str = \'accuracy=resolution\'\n        algorithm_str = \'\'\n        xlabel = \'Lag time (s)\'\n        ylabel = \'G\'\n        xscale = \'log\'\n        yscale = \'linear\'\n        fit_str0 = \'\'\n        fit_str1 = \'fitresult = fcs_fit(Gexp, tau, my_fit_fun, fit_info, param, lBounds, uBounds, plotInfo=-1)\'\n        corr_plot = \'plt.scatter(Gsingle[1:,0], Gsingle[1:,1], s=4, label=corr)\'\n    \n    else:\n        import_corr = \'from brighteyes_ffs.fcs.fcs2corr import fcs_load_and_corr_split as correlate\'\n        algorithm_settings_str = \'accuracy=resolution\'\n        algorithm_str = \', algorithm=algorithm\'\n        xlabel = \'Lag time (s)\'\n        ylabel = \'G\'\n        xscale = \'log\'\n        yscale = \'linear\'\n        fit_str0 = \'\'\n        fit_str1 = \'fitresult = fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bounds=lBounds, param_factors10=paramFactors10, upper_bounds=uBounds, fitmodel=my_fit_fun)\'\n        corr_plot = \'plt.scatter(Gsingle[1:,0], Gsingle[1:,1], s=4, label=corr)\'\n    \n    chunksize = str(analysis_object.settings.chunksize)\n    chunks_off = analysis_object.settings.chunks_off\n    chunks_idx = list(np.nonzero(chunks_off)[0])\n    chunks_off_str = list_to_string(chunks_idx, element_type="")\n    \n    # Create a new notebook object\n    nb = nbf.v4.new_notebook()\n\n    # Create markdown and code cells\n    cells = [\n        nbf.v4.new_markdown_cell("# Generated Jupyter Notebook"),\n        nbf.v4.new_markdown_cell("Import packages"),\n        nbf.v4.new_code_cell(import_corr + """\nfrom brighteyes_ffs.fcs.fcs_fit import fcs_fit, make_fit_info_global_fit, read_global_fit_result, stddev_2_weights, fit_corr\nfrom brighteyes_ffs.fcs.get_fcs_info import get_metafile_from_file, get_file_info\nfrom brighteyes_ffs.fcs.plots import plot_timetrace, plot_fida_hist, plot_corrs_fit, plot_difflaw\nfrom brighteyes_ffs.tools.print_tools import print_table\nfrom brighteyes_ffs.tools.fit_curve import fit_curve\nfrom brighteyes_ffs.fcs_gui.read_ffs import read_g_from_ffs\nfrom brighteyes_ffs.fcs_gui.timetrace_end import timetrace_end\nfrom brighteyes_ffs.pch.pch_fit import fit_pch\nimport matplotlib.pyplot as plt\nimport matplotlib.patches as patches\nimport numpy as np"""),\n        nbf.v4.new_markdown_cell("File name and correlation settings"),\n        nbf.v4.new_code_cell("""file = \\"""" + ffs_file_path + """"\nlist_of_g = """ + list_of_g_str +  """\nlist_of_g_out = """ + list_of_g_out_str +  """\naveraging = """ + averaging_str +  """\nalgorithm = \'""" + algorithm + """\'\nresolution = """ + resolution + """\nchunksize = """ + chunksize),\n        nbf.v4.new_code_cell("""mdata = get_file_info(get_metafile_from_file(file))"""),\n        nbf.v4.new_markdown_cell("Calculate correlations"),\n        nbf.v4.new_code_cell("""G, time_trace = correlate(file, list_of_g=list_of_g, """ + algorithm_settings_str + """, split=chunksize, time_trace=True, averaging=averaging, list_of_g_out=list_of_g_out""" + algorithm_str + """, print_info=False)"""),\n        nbf.v4.new_markdown_cell("Plot time trace"),\n        nbf.v4.new_code_cell("""num_chunks = int(np.floor(mdata.duration / chunksize))\nsplits = np.arange(0, (num_chunks+1)*chunksize, chunksize)\ngood_chunks = """ + chunks_off_str + """\nG.good_chunks = good_chunks"""),\n        nbf.v4.new_code_cell("""n_t = timetrace_end(time_trace) # time_trace is a compressed version of the actual time_trace with between 900-1000 data points\ntime = np.linspace(0, mdata.duration, n_t)\n\nfig, ax = plt.subplots(figsize=(4,2))\nfor i in range(np.shape(time_trace)[1]):\n    plt.plot(time, time_trace[0:n_t,i])\nymin = np.min(time_trace)\nymax = np.max(time_trace)\nif len(splits) <= 101:\n    # color chunks red if not used for calculating average correlation\n    if good_chunks is not None:\n        for i in range(len(splits) - 1):\n            if i not in good_chunks:\n                rect = patches.Rectangle((chunksize*i, ymin), chunksize, ymax-ymin, fc=\'r\', alpha=0.3)\n                ax.add_patch(rect)\nplt.xlim([0, mdata.duration])\nplt.ylim([ymin, ymax])\nplt.xlabel(\'Time (s)\')\nplt.ylabel(\'Photon counts per bin\')"""),\n        nbf.v4.new_markdown_cell("""Plot correlations"""),\n        nbf.v4.new_code_cell("""plt.figure(figsize=(4,3))\nfor corr in list_of_g_out:\n    Gsingle = getattr(G, corr).average(G.good_chunks)\n    """ + corr_plot + """\nplt.legend()\nplt.xlabel(\'""" + xlabel + """\')\nplt.ylabel(\'""" + ylabel + """\')\nplt.xscale(\'""" + xscale + """\')\nplt.yscale(\'""" + yscale + """\')"""),\n]\n    if analysis_object.active_fit is not None:\n        # check fit\n        fit_object = analysis_object.return_fit_obj()\n        if fit_object is not None:\n            fit_obj_single = fit_object.fit_all_curves[0]\n            minbound = list_to_string(fit_obj_single.minbound, element_type="")\n            maxbound = list_to_string(fit_obj_single.maxbound, element_type="")\n            paramFactors10 = list_to_string(fit_obj_single.param_factors10, element_type="")\n            fitfunction = fit_obj_single.fitfunction\n            \n            param_all_str = []\n            for i_fit in range(len(fit_object.fit_all_curves)):\n                fit_startv = fit_object.fit_all_curves[i_fit].startvalues\n                param_all_str.append(list_to_string(fit_startv, element_type=""))\n            \n            if fitfunction is not None:\n            \n                fitfunction_label = fit_obj_single.fitfunction_label # more readable name of the fit function\n                fitrange = fit_obj_single.fitrange\n                fitstart = str(int(fitrange[0]))\n                fitstop = str(int(fitrange[1]))\n                fit_info = list_to_string(fit_obj_single.fitarray[:-1], element_type="")\n                fit_startv = fit_obj_single.startvalues\n                if "maximum entropy" in fit_obj_single.fitfunction_label.lower():\n                    fit_startv = fit_startv[-7:]\n                fitmodel = get_fit_model_from_name(fit_obj_single.fitfunction_label)\n                fs = fit_startv\n                fit_startv = list_to_string(fit_startv, element_type="")\n                \n                \n                fitf = str(fitmodel.fitfunction_name)\n                \n                global_param = \'None\'\n                if \'global\' in fitfunction_label and \'PCH\' not in fitfunction_label:\n                    global_param = list_to_string(fitmodel.global_param, element_type="")\n                    rho_x = []\n                    rho_y = []\n                    for corr in fit_object.fit_all_curves:\n                        rho_x.append(corr.startvalues[4])\n                        rho_y.append(corr.startvalues[5])\n                    cells += [\n                    nbf.v4.new_markdown_cell("Fit correlations with global fit"),\n                    nbf.v4.new_code_cell("""from """ + str(fitfunction.__module__) + """ import """ + fitfunction.__name__ + """ as my_fit_fun # you chose """ + fitfunction_label + """ as the fit function""" ),\n                    nbf.v4.new_code_cell("""start_idx = """ + fitstart + """\nstop_idx = """ + fitstop + """\nglobal_param = np.asarray(""" + global_param + """)\nfit_info = np.asarray(""" + fit_info + """) # use 1 (True) for parameters that have to be fitted, 0 (False) otherwise\nlBounds = np.asarray(""" + minbound + """) # the lower bounds for the fit parameters\nuBounds = np.asarray(""" + maxbound + """) # the upper bounds for the fit parameters\nparamFactors10 = np.asarray(""" + paramFactors10 + """) # change parameters to SI units\nrho_x = """ + list_to_string(rho_x, element_type="") + """\nrho_y = """ + list_to_string(rho_y, element_type="") + """\nparam = np.zeros((len(fit_info), len(G.list_of_g_out)))\nfor i, corr in enumerate(G.list_of_g_out):\n    param[:, i] = np.asarray([""" + str(fs[0]) + """, """ + str(fs[1]) + """, """ + str(fs[2]) + """, """ + str(fs[3]) + """, rho_x[i], rho_y[i], """ + str(fs[6]) + """, """ + str(fs[7]) + """, """ + str(fs[8]) + """]) # starting values\nG_all, tau, Gstd = G.get_av_corrs(G.list_of_g_out, good_chunks_only=True) # make 2D array with all G curves, 1D array with tau, 2D array with weights\nweights = stddev_2_weights(Gstd, clipmax=1) # weights are normalized to max=1, clipmax=1 means no clipping\nfitresult = fcs_fit(G_all[start_idx:stop_idx,:], tau[start_idx:stop_idx], my_fit_fun, fit_info, param, lBounds, uBounds, plotInfo=-1, global_param=global_param, weights=weights[start_idx:stop_idx])\nprint_table(fitresult.x)"""),\n        nbf.v4.new_code_cell("""f, axs = plt.subplots(1, 3, figsize=(10,3))\nfor f, corr in enumerate(G.list_of_g_out):\n    Gsingle = getattr(G, corr).average(G.good_chunks)\n    axs[0].scatter(tau[start_idx:stop_idx], Gsingle[start_idx:stop_idx,1], s=2)\n    #axs[2].scatter(tau[start_idx:stop_idx], Gsingle[start_idx:stop_idx,1], s=2)\n\nfor f, corr in enumerate(G.list_of_g_out):\n    Gsingle = getattr(G, corr).average(G.good_chunks)\n    axs[1].plot(tau[start_idx:stop_idx], Gsingle[start_idx:stop_idx,1]-fitresult.fun[:,f])\n    axs[2].plot(tau[start_idx:stop_idx], fitresult.fun[:,f])\n\ntitles = [\'G\', \'Fit\', \'Residuals\']\nfor i in range(3):\n    axs[i].set_xscale(\'log\')\n    axs[i].set_xlabel(\'Lag time (s)\')\n    axs[i].set_title(titles[i])"""),\n                ]\n                elif \'global\' in fitfunction_label and \'PCH\' in fitfunction_label:\n                        cells += [\n                        nbf.v4.new_code_cell("""from brighteyes_ffs.fcs.plots import plot_timetrace, plot_fida_hist\nfrom brighteyes_ffs.pch.pch_fit import fitfun_pch_nc_global as my_fit_fun # you chose PCH 2 components - global fit as the fit function""")]\n                        \n                        cells += [\n                        nbf.v4.new_code_cell(make_global_fit_pch_string(fit_object))]\n                        \n                        cells += [\n                        nbf.v4.new_code_cell("""plot_fida_hist(G, good_chunks_only=True, fitresults=fitresult)""")]\n                elif "maximum entropy" not in fit_obj_single.fitfunction_label.lower():\n                    cells += [\n                    nbf.v4.new_markdown_cell("Fit correlations"),\n                    nbf.v4.new_code_cell("""from """ + str(fitfunction.__module__) + """ import """ + fitfunction.__name__ + """ as my_fit_fun # you chose """ + fitfunction_label + """ as the fit function""" ),\n                    nbf.v4.new_code_cell("""fitresults = []\nparam_all = [""" + ", ".join(param_all_str) + """]\nfor i, corr in enumerate(list_of_g_out):\n    Gsingle = getattr(G, corr).average(G.good_chunks)\n    Gexp = Gsingle[""" + fitstart + """:""" + fitstop + """,1] # your chosen range for fitting\n    tau = Gsingle[""" + fitstart + """:""" + fitstop + """,0] # corresponding tau values\n    fit_info = np.asarray(""" + fit_info + """) # use 1 (True) for parameters that have to be fitted, 0 (False) otherwise\n    param = np.asarray(param_all[i])\n    lBounds = np.asarray(""" + minbound + """) # the lower bounds for the fit parameters\n    uBounds = np.asarray(""" + maxbound + """) # the upper bounds for the fit parameters\n    paramFactors10 = np.asarray(""" + paramFactors10 + """) # change parameters to SI units\n    """ + fit_str0 + """\n    """ + fit_str1 + """\n    fitresults.append(fitresult)"""),\n    nbf.v4.new_code_cell("""plt.figure(figsize=(4,3))\nfor i, corr in enumerate(list_of_g_out):\n    # plot correlation\n    Gsingle = getattr(G, corr).average(G.good_chunks)\n    plt.scatter(Gsingle[""" + fitstart + """:""" + fitstop + """,0], Gsingle[""" + fitstart + """:""" + fitstop + """,1], s=4, label=corr)\n    # plot fit\n    fitresult = fitresults[i]\n    tau = Gsingle[""" + fitstart + """:""" + fitstop + """,0]\n    plt.plot(tau, Gsingle[""" + fitstart + """:""" + fitstop + """,1]-fitresult.fun)\n    # or use:\n    # plt.plot(tau, my_fit_fun(tau, *fitresult.x*paramFactors10))\nplt.legend()\nplt.xlabel(\'""" + xlabel + """\')\nplt.ylabel(\'""" + ylabel + """\')\nplt.xscale(\'""" + xscale + """\')\nplt.yscale(\'""" + yscale + """\')"""),\n                    ]\n\n            if fit_obj_single.fitfunction_label == \'Asymmetry heat map\':\n                cells += add_asymmetry_heat_map()\n            \n            elif fit_obj_single.fitfunction_label == \'Maximum entropy method free diffusion\':\n                fitfun_str = "from " + str(fitfunction.__module__) + " import " + fitfunction.__name__ + " as my_fit_fun # you chose " + fitfunction_label + " as the fit function"\n                cells += add_mem(fitfun_str, fs, [fitstart, fitstop], minbound, maxbound)\n                                     \n            elif fit_object.return_all("w0") is not None and None not in fit_object.return_all("w0"):\n                w0 = fit_object.return_all("w0")\n                w0 = ",".join(map(str, w0))\n                cells += add_difflaw(w0)\n        \n\n    # Add the cells to the notebook\n    nb[\'cells\'] = cells\n\n    # Write the notebook to a file\n    with open(notebook_path, "w") as f:\n        nbf.write(nb, f)\n    \n    return "success"\n\n\ndef add_difflaw(w0):\n    return [\n    nbf.v4.new_markdown_cell("Diffusion law"),\n    nbf.v4.new_code_cell("""w0 = 1e-3 * np.asarray([""" + w0 + """]) # beam waists in um\ntaufit = [fitresult.x[1] for fitresult in fitresults]\nplot_difflaw(taufit, w0, figsize=None, cmap=\'viridis\', return_fig=False)"""),\n            ]\n\ndef add_mem(fitfun_str, fit_startv, fitrange, minbound, maxbound):\n    start_idx = int(fitrange[0])\n    stop_idx = int(fitrange[1])\n    n_comp = int(fit_startv[-7])\n    corr_vs_entropy = fit_startv[-2]\n    shape_parameter = fit_startv[-1]\n    max_iter = int(fit_startv[-6])\n    \n    return [\n        nbf.v4.new_markdown_cell("Fit correlations"),\n        nbf.v4.new_code_cell(fitfun_str),\n        nbf.v4.new_markdown_cell("Fit with maximum entropy method"),\n        nbf.v4.new_code_cell("""n_comp = """ + str(n_comp) + """ # number of diffusion times\ncorr_vs_entropy = """ + str(corr_vs_entropy) + """ # weight of the correlation vs. weight of the entropy\nshape_parameter = """ + str(shape_parameter) + """ # z0/w0\nmax_iter = """ + str(max_iter) + """ # maximum number of iterations in the fit\n\nstart_idx = """ + str(start_idx) + """ \nstop_idx =  """ + str(stop_idx) + """ \n\nGall, tau, Gstd = G.get_av_corrs(G.list_of_g_out, good_chunks_only=True)\nGall = Gall[start_idx:stop_idx,:]\ntau = tau[start_idx:stop_idx]\n\nfitresults_mem = []\nfor i, corr in enumerate(list_of_g):\n    fit_info = np.asarray([False, False, False, False, False, False, False])\n    param = np.asarray([n_comp, max_iter, 5e-06, 0.0002, 1.0, corr_vs_entropy, shape_parameter])\n    lBounds = np.asarray([""" + minbound + """]) # the lower bounds for the fit parameters\n    uBounds = np.asarray([""" + maxbound + """]) # the upper bounds for the fit parameters\n    \n    fitresult = fcs_fit(Gall[:,i], tau, my_fit_fun, fit_info, param, lBounds, uBounds, plotInfo=-1)\n    fitresults_mem.append(fitresult)"""),\n    nbf.v4.new_code_cell("""plot_corrs_fit(Gall, tau, list_of_g, fitresults_mem, figsize=None, size=12, return_fig=False)"""),\n    nbf.v4.new_markdown_cell("Distribution of diffusion times"),\n    nbf.v4.new_code_cell("""plt.figure(figsize=(4,3))\n\ntaumin = np.log10(Gsingle[2,0])\ntaumax = np.log10(Gsingle[141-1,0])\ntauD = np.logspace(taumin, taumax, 200)\n\nfor i, corr in enumerate(list_of_g):\n    # plot correlation\n    fitresult = fitresults_mem[i].x\n    plt.plot(tauD, fitresult, label=corr)\nplt.legend()\nplt.xlabel(\'Lag time (s)\')\nplt.ylabel(\'Fraction\')\nplt.xscale(\'log\')\nplt.yscale(\'linear\')"""),\n            ]\n\n\ndef add_asymmetry_heat_map():\n    return [\n    nbf.v4.new_markdown_cell("Asymmetry heat map"),\n    nbf.v4.new_code_cell("""from brighteyes_ffs.fcs.fcs_polar import g2polar""" ),\n    nbf.v4.new_code_cell("""num_curves = len(list_of_g_out)\nif num_curves == 4:\n    columnorder = [\'Right\', \'Up\', \'Left\', \'Down\'] # square array detector\nelif num_curves == 6:\n    columnorder = [\'Right\', \'UpRight\', \'UpLeft\', \'Left\', \'DownLeft\', \'DownRight\'] # airy detector\nelse:\n    print("something went wrong")\n\nN = len(getattr(G, columnorder[0]).average(G.good_chunks)[:,1])\nallfits = np.zeros((N, len(columnorder)))\nfor i in range(num_curves):\n    allfits[:,i] = getattr(G, columnorder[i]).average(G.good_chunks)[:,1]\n\nz = g2polar(allfits[1:,:])\nR = len(z) / 2\nphi = np.linspace(0, 2*np.pi, 360)\nplt.figure()\nplt.imshow(np.flipud(z), cmap=\'jet\')\nplt.plot(R*np.cos(phi) + R, R*np.sin(phi)+R, \'-\', color=\'k\', linewidth=5)\nplt.xlim([-0.1*R, 2.1*R])\nplt.ylim([-0.1*R, 2.1*R])"""),\n            ]\n                         \n                         \ndef list_to_string(my_list, element_type="\'"):\n    list_str = "["\n    for i in my_list:\n        if element_type == \'auto\':\n            if type(i) == str:\n                element_type_str = "\'"\n            else:\n                element_type_str = ""\n        else:\n            element_type_str = element_type\n        list_str += element_type_str + str(i) + element_type_str + ", "\n    list_str = list_str[:-2] + "]"\n    return list_str\n\n\ndef make_global_fit_pch_string(fit_object):\n    \n    list_of_str_of_param = []\n    for i, corr in enumerate(fit_object.fit_all_curves):\n        fitrange = corr.fitrange\n        row_list = list_to_string(corr.startvalues, "")\n        list_of_str_of_param.append(f"param[:,{i}] = {row_list}")\n    param_str = "\\n".join(list_of_str_of_param)\n    stop_idx = str(int(fitrange[1]))\n    \n    string_to_return = """\nn_bins_hist = len(Gsingle)\npch_all = np.zeros((n_bins_hist, len(list_of_g_out)))\nparam = np.zeros((10, len(list_of_g_out)))\n\nfor i, corr in enumerate(list_of_g_out):\n    Gsingle = getattr(G, corr).average(G.good_chunks)\n    pch_all[:, i] = Gsingle[:,1] # your chosen range for fitting""" + """\n"""+ param_str + """\n\npsf = list(np.reshape(np.transpose(param[7:9,:]), (2*len(list_of_g_out))))\n\nfit_info = np.asarray([True, False, True, False, False, False, False, False, False, False]) # use True for parameters that have to be fitted, False otherwise\nglobal_param = np.asarray([True, True, False, False, False, False, False, False, False, False]) # use True for global parameters\nlBounds = np.asarray([1e-10, 1e-10, 1e-10, 1e-10, 0.0, 1e-12, 1e-12, 1e-12, 1e-12, 10.0]) # the lower bounds for the fit parameters\nuBounds = np.asarray([1e12, 1e12, 1e12, 1e12, 1e5, 1e12, 1e12, 1e12, 1e12, 1e12]) # the upper bounds for the fit parameters\nnparam = len(param) - 3\n\nfitresult = fit_pch(pch_all[0:""" + stop_idx + """], fit_info[0:nparam], param[0:nparam,:], psf=psf, fitfun=my_fit_fun, global_param=global_param[0:nparam], lBounds=lBounds[0:nparam], uBounds=uBounds[0:nparam], n_bins=param[nparam+2,0], minimization="relative")"""\n    \n    return string_to_return'
+
+
+def _browser_notebook_markdown(source):
+    return {'cell_type': 'markdown', 'metadata': {}, 'source': source}
+
+
+def _browser_notebook_generator():
+    """Run the supplied desktop generators with a small notebook-format adapter."""
+    from types import SimpleNamespace
+    class NotebookFormat:
+        @staticmethod
+        def write(notebook, handle):
+            json.dump(notebook, handle, indent=2, allow_nan=False)
+    def code_cell(source):
+        return {'cell_type': 'code', 'metadata': {}, 'source': source,
+                'execution_count': None, 'outputs': []}
+    NotebookFormat.v4 = SimpleNamespace(
+        new_notebook=lambda: {'nbformat': 4, 'nbformat_minor': 5,
+            'metadata': {'kernelspec': {'display_name': 'Python 3', 'language': 'python', 'name': 'python3'}}, 'cells': []},
+        new_code_cell=code_cell, new_markdown_cell=_browser_notebook_markdown)
+    def get_model(label):
+        model = next((m for m in _FIT_MODELS.values() if m['label'] == label), None)
+        if model is None:
+            raise ValueError('Unknown notebook fit model: ' + str(label))
+        return SimpleNamespace(fitfunction_name=model['function'], global_param=None)
+    source = _DESKTOP_NOTEBOOK_SOURCE.replace('import nbformat as nbf', '')
+    source = source.replace('from .fitmodels import get_fit_model_from_name', '')
+    # Infinity in desktop bounds must be a valid name in generated Python.
+    source = source.replace('import numpy as np"""),', 'import numpy as np\nfrom numpy import inf"""),')
+    # The same fit_corr API is used for both arrival-time and trace fits.
+    source = source.replace("fit_str1 = 'fitresult = fcs_fit(Gexp, tau, my_fit_fun, fit_info, param, lBounds, uBounds, plotInfo=-1)'", "fit_str1 = 'fitresult = fit_corr(Gexp, tau, fit_info, param, weights=1, global_param=None, lower_bounds=lBounds, param_factors10=paramFactors10, upper_bounds=uBounds, fitmodel=my_fit_fun)'")
+    namespace = {'nbf': NotebookFormat, 'get_fit_model_from_name': get_model}
+    exec(compile(source, '<desktop session_to_notebook>', 'exec'), namespace)
+    # The desktop helper's slicing produces invalid Python for an empty list.
+    def list_to_string(values, element_type="'"):
+        if element_type == 'auto':
+            return '[' + ', '.join(repr(v) if isinstance(v, str) else str(v) for v in values) + ']'
+        return '[' + ', '.join(element_type + str(v) + element_type for v in values) + ']'
+    namespace['list_to_string'] = list_to_string
+    return namespace
+
+
 def create_jupyter_notebook(payload=None):
-    ffs_file = _browser_current_file()
-    result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
-    if not isinstance(result, dict):
-        return _browser_response("Calculate a correlation before creating a notebook.")
-    notebook = {
-        "nbformat": 4, "nbformat_minor": 5,
-        "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}},
-        "cells": [
-            {"cell_type": "markdown", "metadata": {}, "source": ["# BrightEyes-FFS correlation\n"]},
-            {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [],
-             "source": ["import matplotlib.pyplot as plt\n", "result = " + json.dumps(result) + "\n",
-                        "plt.semilogx(result['tau_s'], result['g'])\n", "plt.show()\n"]},
-        ],
-    }
-    return _browser_response("Notebook prepared for download.", download={"name": "brighteyes-ffs-session.ipynb", "text": json.dumps(notebook, indent=2), "type": "application/x-ipynb+json"})
+    from copy import copy
+    from importlib import import_module
+    from types import SimpleNamespace
+
+    library = _browser_session_for_native_save()
+    image = library.lib[library.active_image] if library.active_image is not None and library.lib else None
+    ffs_file = image.get_ffs_file() if image is not None else None
+    analysis = ffs_file.get_analysis() if ffs_file is not None else None
+    if analysis is None:
+        return _browser_response("Select a calculated correlation before creating a notebook.")
+    # The browser cannot disclose a local file path. The notebook must be
+    # pointed at the original measurement on the computer running Jupyter.
+    ffs_file.fname = str(ffs_file.fname).replace('\\', '/').split('/')[-1]
+    active_fit = analysis.return_fit_obj()
+    if active_fit is not None and active_fit.fit_all_curves:
+        for curve in active_fit.fit_all_curves:
+            model = next((m for m in _FIT_MODELS.values() if m['label'] == curve.fitfunction_label), None)
+            if model is None or model['global_fit']:
+                raise ValueError("Notebook export does not support this fit model. Select a supported non-global fit or deselect the fit.")
+            curve.fitfunction = getattr(import_module(model['module']), model['function'])
+        active_fit.return_all = lambda field: [getattr(curve, field, None) for curve in active_fit.fit_all_curves]
+
+    generator = _browser_notebook_generator()
+    with tempfile.TemporaryDirectory() as directory:
+        import os
+        path = os.path.join(directory, 'analysis.ipynb')
+        status = generator['convert_session_to_notebook'](library, path)
+        if status != 'success':
+            raise ValueError(str(status))
+        with open(path, encoding='utf-8') as handle:
+            notebook = json.load(handle)
+    notebook['cells'].insert(1, _browser_notebook_markdown(
+        'This notebook recreates the selected analysis. Place the raw data file next to this notebook or edit the `file` variable below to its path. Install a compatible version of BrightEyes-FFS and its dependencies before running.'))
+    return _browser_response('Analysis notebook prepared. Set the raw data path before running it.',
+        download={'name': 'brighteyes-ffs-analysis.ipynb', 'text': json.dumps(notebook, indent=2), 'type': 'application/x-ipynb+json'})
 
 
 def plot_jupyter_notebook(payload=None):
-    return create_jupyter_notebook(payload)
+    import io
+    import os
+    import zipfile
+    if _browser_current_file() is None:
+        return _browser_response('Load or open a session before creating a notebook.')
+    # Use the exact same native session writer as the regular Save command.
+    saved = json.loads(save_session())
+    ffs_bytes = base64.b64decode(saved['download']['base64'])
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, 'plot-session.ipynb')
+        _browser_notebook_generator()['plot_session_in_notebook'](
+            ffs_path='brighteyes-ffs-session.ffs', notebook_path=path)
+        with open(path, encoding='utf-8') as handle:
+            notebook = json.load(handle)
+    notebook['cells'].insert(1, _browser_notebook_markdown(
+        'Extract both files into the same folder and run this notebook from that folder. It reads the saved session; raw measurements are not included. Some optional desktop cells require a suitable fit or image.'))
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('brighteyes-ffs-session.ffs', ffs_bytes)
+        archive.writestr('plot-session.ipynb', json.dumps(notebook, indent=2))
+    return _browser_response('Session and plotting notebook prepared. Extract both files together.',
+        download={'name': 'brighteyes-ffs-session-and-notebook.zip', 'base64': base64.b64encode(output.getvalue()).decode('ascii'), 'type': 'application/zip'})
+
+
+def _browser_package_excel(writer_name, source, filename):
+    """Write the desktop workbook with BrightEyes-FFS and download its bytes."""
+    # session_to_excel imports restore_session, which imports Qt's file dialog.
+    # Initialize the same browser-safe shim used by the native .ffs writer.
+    _browser_native_ffs_writer()
+    from brighteyes_ffs.fcs_gui import session_to_excel
+    from openpyxl.utils import column_index_from_string, get_column_letter
+    # Older package releases increment a single character, which fails after
+    # column Z. Keep the package writer but allow its helper to reach AA, AB…
+    original_next_letter = session_to_excel.next_letter
+    session_to_excel.next_letter = lambda column: get_column_letter(column_index_from_string(column) + 1)
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            import os
+            path = os.path.join(directory, filename)
+            getattr(session_to_excel, writer_name)(source, path)
+            with open(path, 'rb') as handle:
+                encoded = base64.b64encode(handle.read()).decode('ascii')
+    finally:
+        session_to_excel.next_letter = original_next_letter
+    return _browser_response('Excel workbook prepared for download.', download={
+        'name': filename, 'base64': encoded,
+        'type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
 
 
 def export_session_xlsx(payload=None):
-    csv_text = _browser_csv_rows()
-    return _browser_response("Results prepared as Excel-compatible CSV.", download={"name": "brighteyes-ffs-results.csv", "text": csv_text, "type": "text/csv"})
+    return _browser_package_excel('lib2excel', _browser_session_for_native_save(), 'brighteyes-ffs-results.xlsx')
 
 
 def export_corr_xlsx(payload=None):
     ffs_file = _browser_current_file()
     if ffs_file is None or not isinstance(getattr(ffs_file, "browser_result", None), dict):
         return _browser_response("Calculate a correlation before exporting it.")
-    return _browser_response("Correlation prepared as Excel-compatible CSV.", download={"name": "brighteyes-ffs-correlation.csv", "text": _browser_csv_rows(True), "type": "text/csv"})
+    result = ffs_file.browser_result
+    taus, curves = result.get('tau_s', []), result.get('g', [])
+    if not taus or not curves:
+        return _browser_response('The selected correlation has no data to export.')
+    multiple = isinstance(taus[0], (list, tuple))
+    taus = taus if multiple else [taus]
+    curves = curves if multiple else [curves]
+    if len(taus) != len(curves) or any(len(t) != len(g) for t, g in zip(taus, curves)):
+        raise ValueError('Correlation lag times and values do not match.')
+    current_corrs = [np.column_stack((np.asarray(t, dtype=float), np.asarray(g, dtype=float)))
+                     for t, g in zip(taus, curves)]
+    return _browser_package_excel('corr2excel', current_corrs, 'brighteyes-ffs-correlation.xlsx')
 
 
 def dispatch_main_handler(handler_name, payload_json="{}"):
@@ -5432,6 +5704,7 @@ def browser_action_catalog():
       const metadataCancel = document.createElement("button");
       let pendingBinFile = null;
       let pendingBinImage = null;
+      let pendingRawReload = null;
       let pyodide = null;
       let scriptPromise = null;
       let uploadNumber = 0;
@@ -5449,6 +5722,8 @@ def browser_action_catalog():
       let correlationJob = null;
       let startupPreviewData = null;
       let lastDrawnPreview = null;
+      let hoveredDetector = null;
+      let fingerprintHitRegions = [];
       let lastDiffusionLaw = null;
       const h5FilesByTab = new Map();
       const imageUrls = [];
@@ -5496,6 +5771,7 @@ def browser_action_catalog():
       const cancelMetadataSelection = function () {
         pendingBinFile = null;
         pendingBinImage = null;
+        pendingRawReload = null;
         setStatus("ready", "Binary file loading cancelled.");
       };
       metadataCancel.addEventListener("click", function () { metadataDialog.close(); cancelMetadataSelection(); });
@@ -5507,6 +5783,22 @@ def browser_action_catalog():
         setStatus("ready", "Choose metadata file: " + expectedName);
         metadataDialog.showModal();
       }
+
+      const reloadDialog = document.createElement("dialog");
+      const reloadMessage = document.createElement("p");
+      const reloadChoose = document.createElement("button");
+      const reloadCancel = document.createElement("button");
+      reloadDialog.setAttribute("aria-label", "Reload original raw data");
+      reloadDialog.style.cssText = "max-width: min(90vw, 460px); padding: 20px; border: 1px solid #9bb8c6; border-radius: 12px; background: var(--panel); color: var(--ink)";
+      reloadChoose.type = reloadCancel.type = "button";
+      reloadChoose.className = reloadCancel.className = "tool-button";
+      reloadChoose.textContent = "Choose original file"; reloadCancel.textContent = "Cancel";
+      reloadCancel.style.marginLeft = "8px";
+      reloadDialog.append(reloadMessage, reloadChoose, reloadCancel);
+      document.body.appendChild(reloadDialog);
+      reloadChoose.addEventListener("click", function () { reloadDialog.close(); fileInput.click(); });
+      reloadCancel.addEventListener("click", function () { pendingRawReload = null; reloadDialog.close(); });
+      reloadDialog.addEventListener("cancel", function () { pendingRawReload = null; });
 
       function byId(id) { return document.getElementById(id); }
 
@@ -5845,6 +6137,20 @@ def browser_action_catalog():
         anchor.download = download.name || "brighteyes-ffs-download";
         anchor.click();
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      }
+
+      function downloadConvertedH5(response, originalName) {
+        if (response.error || !response.converted_h5_path) return;
+        const bytes = pyodide.FS.readFile(response.converted_h5_path);
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/x-hdf5" }));
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = originalName.replace(/\.(bin|mat)$/i, ".h5");
+        anchor.hidden = true;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
       }
 
       function renderRowsPreview(preview) {
@@ -6222,6 +6528,7 @@ def browser_action_catalog():
 
       function drawPreview(preview) {
         if (!preview) return;
+        if (preview !== lastDrawnPreview) hoveredDetector = null;
         lastDrawnPreview = preview;
         const palette = plotPalette();
         const line = canvasContext(byId("timeTraceCanvas"), 500, 132);
@@ -6304,9 +6611,16 @@ def browser_action_catalog():
           }
           line.context.strokeStyle = palette.axis;
           line.context.beginPath(); line.context.moveTo(left, top); line.context.lineTo(left, line.height - bottom); line.context.lineTo(line.width - right, line.height - bottom); line.context.stroke();
-          ratesKHz.forEach(function (trace, channel) {
+          const traceOrder = ratesKHz.map(function (_, channel) { return channel; });
+          if (hoveredDetector !== null && hoveredDetector < ratesKHz.length) {
+            traceOrder.splice(hoveredDetector, 1);
+            traceOrder.push(hoveredDetector);
+          }
+          traceOrder.forEach(function (channel) {
+            const trace = ratesKHz[channel];
             line.context.strokeStyle = "hsl(" + ((channel * 137.5) % 360).toFixed(0) + ", 74%, 66%)";
-            line.context.lineWidth = 1.05;
+            line.context.globalAlpha = hoveredDetector === null || channel === hoveredDetector ? 1 : 0.12;
+            line.context.lineWidth = channel === hoveredDetector ? 2 : 1.05;
             line.context.beginPath();
             trace.forEach(function (value, index) {
               const x = xAt(index);
@@ -6315,6 +6629,7 @@ def browser_action_catalog():
             });
             line.context.stroke();
           });
+          line.context.globalAlpha = 1;
           line.context.fillStyle = palette.subtle;
           line.context.font = "10px system-ui";
           line.context.textAlign = "center"; line.context.textBaseline = "alphabetic";
@@ -6329,6 +6644,7 @@ def browser_action_catalog():
         const fingerprintSize = Math.max(1, Math.floor(fingerprintCanvas.getBoundingClientRect().width || 128));
         const print = canvasContext(fingerprintCanvas, 128, fingerprintSize);
         const fingerprint = preview.fingerprint || [];
+        fingerprintHitRegions = [];
         print.context.fillStyle = palette.background;
         print.context.fillRect(0, 0, print.width, print.height);
         const detectorType = preview.detector_type || (fingerprint.length === 49 ? "prism-7x7" : fingerprint.length === 25 ? "custom" : "");
@@ -6371,6 +6687,7 @@ def browser_action_catalog():
             const x0 = print.width / 2 - (length - 1) * dx / 2;
             for (let column = 0; column < length; column += 1, index += 1) {
               const x = x0 + column * dx;
+              fingerprintHitRegions.push({ channel: index + 9, x: x, y: y, radius: radius });
               print.context.fillStyle = colorFor(displayed[index]);
               print.context.beginPath();
               for (let corner = 0; corner < 6; corner += 1) {
@@ -6386,11 +6703,41 @@ def browser_action_catalog():
           const rows = Math.max(1, Math.ceil(fingerprint.length / columns));
           const cellWidth = print.width / columns, cellHeight = print.height / rows;
           fingerprint.forEach(function (value, index) {
+            fingerprintHitRegions.push({ channel: index, x: (index % columns) * cellWidth,
+              y: Math.floor(index / columns) * cellHeight, width: cellWidth, height: cellHeight });
             print.context.fillStyle = colorFor(value);
             print.context.fillRect((index % columns) * cellWidth, Math.floor(index / columns) * cellHeight, cellWidth, cellHeight);
           });
         }
       }
+
+      const fingerprintHoverCanvas = byId("fingerprintCanvas");
+      fingerprintHoverCanvas.addEventListener("pointermove", function (event) {
+        const rect = fingerprintHoverCanvas.getBoundingClientRect();
+        const x = event.clientX - rect.left, y = event.clientY - rect.top;
+        const hit = fingerprintHitRegions.find(function (region) {
+          if (region.radius !== undefined) {
+            const dx = Math.abs(x - region.x), dy = Math.abs(y - region.y);
+            return dx <= Math.sqrt(3) * region.radius / 2 && dy <= region.radius &&
+              dx + Math.sqrt(3) * dy <= Math.sqrt(3) * region.radius;
+          }
+          return x >= region.x && x < region.x + region.width && y >= region.y && y < region.y + region.height;
+        });
+        const traces = lastDrawnPreview && (lastDrawnPreview.traces || (lastDrawnPreview.total ? [lastDrawnPreview.total] : []));
+        const channel = hit && traces && hit.channel < traces.length ? hit.channel : null;
+        fingerprintHoverCanvas.title = channel === null ? "" : "Detector " + channel;
+        if (channel !== hoveredDetector) {
+          hoveredDetector = channel;
+          if (lastDrawnPreview) drawPreview(lastDrawnPreview);
+        }
+      });
+      fingerprintHoverCanvas.addEventListener("pointerleave", function () {
+        fingerprintHoverCanvas.title = "";
+        if (hoveredDetector !== null) {
+          hoveredDetector = null;
+          if (lastDrawnPreview) drawPreview(lastDrawnPreview);
+        }
+      });
 
       function drawCorrelation(result, fit) {
         const palette = plotPalette();
@@ -6814,6 +7161,13 @@ def browser_action_catalog():
         if (response.diffusion_law) drawDiffusionLaw(response.diffusion_law);
         if (response.download) requestDownload(response.download);
         if (response.browser_action === "request_data_file") fileInput.click();
+        if (response.browser_action === "request_raw_reload") {
+          pendingRawReload = {name: response.expected_raw_name || "", key: activeFileKey(response.view)};
+          reloadMessage.textContent = "The raw data is no longer in memory. Select the original file " +
+            (pendingRawReload.name ? '“' + pendingRawReload.name + '”' : "for this measurement") +
+            ". Existing correlations and fits will be kept.";
+          reloadDialog.showModal();
+        }
         if (response.browser_action === "request_image_file") {
           imageInput.dataset.replace = response.replace_image ? "true" : "";
           imageInput.click();
@@ -6854,13 +7208,26 @@ def browser_action_catalog():
           );
         }
         try {
-          return await callPython(expression, Object.assign({
+          const result = await callPython(expression, Object.assign({
             browser_upload_path: path,
             browser_upload_name: file.name
           }, values || {}));
+          if (result && result.error) {
+            try { pyodide.FS.unlink(path); } catch (_) { /* It may already have been removed. */ }
+          }
+          return result;
         } catch (error) {
+          try { pyodide.FS.unlink(path); } catch (_) { /* It may already have been removed. */ }
           throw new Error("Python could not inspect " + description + ": " + describeError(error));
         }
+      }
+
+      async function releasePreviousRawData() {
+        setStatus("starting", "Preserving time traces and releasing previous raw data…");
+        await waitForBusyPaint();
+        const response = await callPython("browser_release_raw_data()");
+        h5FilesByTab.clear();
+        applyResponse(response);
       }
 
       function bindPythonButtons() {
@@ -6869,6 +7236,7 @@ def browser_action_catalog():
             event.preventDefault();
             event.stopImmediatePropagation();
             const handlerName = button.dataset.pythonHandler;
+            if (button.id === "newFileButton") pendingRawReload = null;
             if (handlerName === "new_session" && !window.confirm("Create a new session? Unsaved changes will be lost.")) return;
             if (handlerName === "remove_current_ffs_file" && !window.confirm("Remove the current FFS file and its analyses?")) return;
             const payload = {
@@ -6880,6 +7248,11 @@ def browser_action_catalog():
             try {
             setStatus("starting", "Running Python handler: " + handlerName + "…");
             await waitForBusyPaint();
+            if (handlerName === "export_session_xlsx" || handlerName === "export_corr_xlsx") {
+              setStatus("starting", "Preparing Excel export…");
+              await waitForBusyPaint();
+              await pyodide.runPythonAsync("import importlib.util\nif importlib.util.find_spec('openpyxl') is None:\n    await micropip.install('openpyxl')");
+            }
             if ((handlerName === "newfit" || handlerName === "overwritefit") && byId("showChunksCorrSelect").value !== "average") {
               byId("showChunksCorrSelect").value = "average";
               applyResponse(await dispatchPythonHandler("show_chunks_corr_change", {values: formValues()}));
@@ -6915,6 +7288,7 @@ def browser_action_catalog():
           try {
             setStatus("starting", "Downloading the example session from GitHub…");
             await waitForBusyPaint();
+            await releasePreviousRawData();
             const response = await fetch(source);
             if (!response.ok) throw new Error("GitHub returned HTTP " + response.status + ".");
             pyodide.FS.mkdirTree("/work");
@@ -7169,28 +7543,67 @@ def browser_action_catalog():
         fileInput.addEventListener("change", async function () {
           const file = fileInput.files[0];
           if (!file) return;
+          if (pendingRawReload && pendingRawReload.key !== activeFileKey()) {
+            pendingRawReload = null; fileInput.value = "";
+            setStatus("error", "The selected measurement changed. Select its original raw file again."); return;
+          }
+          if (pendingRawReload && pendingRawReload.name && file.name.toLowerCase() !== pendingRawReload.name.toLowerCase()) {
+            const expected = pendingRawReload.name;
+            pendingRawReload = null; fileInput.value = "";
+            setStatus("error", "Please select the original raw file: " + expected); return;
+          }
+          try {
+            await releasePreviousRawData();
+          } catch (error) {
+            pendingRawReload = null; fileInput.value = "";
+            setStatus("error", "Could not safely release the previous raw data: " + describeError(error)); return;
+          }
           if (/\.bin$/i.test(file.name)) {
             pendingBinFile = file;
             fileInput.value = "";
             requestBinMetadata(file);
             return;
           }
+          if (/\.mat$/i.test(file.name)) {
+            try {
+              byId("datasetZone").open = false;
+              setStatus("starting", "Converting " + file.name + " to H5…");
+              await waitForBusyPaint();
+              const response = await uploadFile(file,
+                "browser_convert_mat_and_load(browser_upload_path, browser_upload_name, browser_mat_reconnect)",
+                { browser_mat_reconnect: Boolean(pendingRawReload) });
+              downloadConvertedH5(response, file.name);
+              applyResponse(response);
+            } catch (error) {
+              setStatus("error", "Could not convert or load MAT file: " + describeError(error));
+            } finally {
+              pendingRawReload = null;
+              fileInput.value = "";
+            }
+            return;
+          }
           try {
             // A newly loaded file starts with its raw-data inspector closed.
             byId("datasetZone").open = false;
             setStatus("starting", "Loading " + file.name + " (" + formatBytes(file.size) + ") in browser Python…");
-            const response = await uploadFile(file, "browser_load_data_file_safe(browser_upload_path, browser_upload_name)");
+            const reconnect = Boolean(pendingRawReload);
+            const response = await uploadFile(file, reconnect
+              ? "browser_reconnect_raw(browser_upload_path, browser_upload_name)"
+              : "browser_load_data_file_safe(browser_upload_path, browser_upload_name)");
             applyResponse(response);
             if (!response.error) h5FilesByTab.set(activeFileKey(response.view), file);
           } catch (error) {
             setStatus("error", "Could not load data file: " + describeError(error));
           } finally {
+            pendingRawReload = null;
             fileInput.value = "";
           }
         });
+        fileInput.addEventListener("cancel", function () { pendingRawReload = null; });
         binMetadataInput.addEventListener("cancel", function () {
           pendingBinFile = null;
           pendingBinImage = null;
+          pendingRawReload = null;
           setStatus("ready", "Binary file loading cancelled; metadata file was not selected.");
         });
         binMetadataInput.addEventListener("change", async function () {
@@ -7215,23 +7628,20 @@ def browser_action_catalog():
             setStatus("starting", "Loading metadata and converting " + binFile.name + " to H5…");
             await waitForBusyPaint();
             const metadata = await uploadFile(metadataFile, 'json.dumps({"path": browser_upload_path})');
-            const response = await uploadFile(binFile,
-              "browser_convert_bin_and_load(browser_upload_path, browser_upload_name, browser_bin_metadata_path)",
-              { browser_bin_metadata_path: metadata.path });
-            applyResponse(response);
-            if (!response.error && response.converted_h5_path) {
-              // Read the completed virtual H5 as bytes, without a base64 copy.
-              const bytes = pyodide.FS.readFile(response.converted_h5_path);
-              const url = URL.createObjectURL(new Blob([bytes], {type: "application/x-hdf5"}));
-              const anchor = document.createElement("a");
-              anchor.href = url;
-              anchor.download = response.converted_h5_name;
-              anchor.click();
-              setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            let response;
+            try {
+              response = await uploadFile(binFile,
+                "browser_convert_bin_and_load(browser_upload_path, browser_upload_name, browser_bin_metadata_path, browser_bin_reconnect)",
+                { browser_bin_metadata_path: metadata.path, browser_bin_reconnect: Boolean(pendingRawReload) });
+            } finally {
+              try { pyodide.FS.unlink(metadata.path); } catch (_) { /* Already removed. */ }
             }
+            downloadConvertedH5(response, binFile.name);
+            applyResponse(response);
           } catch (error) {
             setStatus("error", "Could not convert or load binary file: " + describeError(error));
           } finally {
+            pendingRawReload = null;
             binMetadataInput.value = "";
           }
         });
@@ -7264,6 +7674,11 @@ def browser_action_catalog():
         });
         datasetSelect.addEventListener("change", async function () {
           if (suppressDatasetChange || !datasetSelect.value) return;
+          if (activeView && activeView.active_file && !activeView.active_file.raw_available) {
+            try { applyResponse(await callPython("_browser_request_raw_reload(_browser_current_file())")); }
+            catch (error) { setStatus("error", "Could not request the original file: " + describeError(error)); }
+            return;
+          }
           datasetSelect.title = activeView && activeView.active_file && activeView.active_file.data_kind === "tcspc"
             ? "/det" + datasetSelect.value : datasetSelect.value;
           try {
@@ -7319,6 +7734,7 @@ def browser_action_catalog():
           const file = sessionInput.files[0];
           if (!file) return;
           try {
+            await releasePreviousRawData();
             setStatus("starting", "Opening " + file.name + "…");
             await waitForBusyPaint();
             applyResponse(await uploadFile(file, "browser_restore_ffs(browser_upload_path)"));
