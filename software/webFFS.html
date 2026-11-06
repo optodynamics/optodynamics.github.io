@@ -420,6 +420,7 @@
 
     .right-sidebar .panel-body { padding: 13px 14px 15px; }
     .right-sidebar .settings-stack { min-width: 0; gap: 10px; }
+    #crossAveragingControls:not([hidden]), #crossCustomAveraging:not([hidden]) { display: grid; gap: 10px; }
     .right-sidebar .choice { min-width: 0; gap: 3px; padding: 9px; }
     .right-sidebar label { min-width: 0; max-width: 100%; }
     .right-sidebar .choice h3 { font-size: .84rem; }
@@ -1624,17 +1625,23 @@
 					<option value="custom" selected>Square 5x5</option>
 				</select></label>
 
-                <label><span>Raw data type</span><select id="rawDataType">
-                  <option value="auto">Detect automatically</option>
-                  <option value="time_trace">Binned time trace</option>
-                  <option value="tcspc">TCSPC photon arrivals</option>
-                </select></label>
-
 				<label><span>Mode</span><select id="correlationType">
                   <option value="sv_fcs">Spot-variation FCS</option>
 				  <option value="all_autocorr">All autocorrelations</option>
 				  <option value="all_cross">All cross-correlations</option>
 				</select></label>
+
+                <div id="crossAveragingControls" hidden>
+                  <label><span>Cross-correlation averaging</span><select id="crossAveraging">
+                    <option value="none">Without averaging</option>
+                    <option value="default" selected>With default averaging</option>
+                    <option value="custom">With custom averaging</option>
+                  </select></label>
+                  <div id="crossCustomAveraging" hidden>
+                    <label><span>Averaging list</span><input id="crossAverageList" type="text" placeholder="['0x1+1x2', '1x0+2x1']"></label>
+                    <label><span>Output names</span><input id="crossOutputList" type="text" placeholder="['right', 'left']"></label>
+                  </div>
+                </div>
 
 				<label><span>Algorithm</span><select id="algorithm">
                   <option value="multipletau">Multipletau</option>
@@ -2222,9 +2229,54 @@ def _desktop_correlation_request(values):
                  "airyscan": "Airyscan 32", "pi-imaging-pda23": "PDA-23"}
         if detector not in names:
             raise ValueError("Unsupported detector type: " + detector)
+        averaging_mode = str(values.get('crossAveraging') or 'default')
+        if averaging_mode == 'none':
+            channels = {'custom': range(25), 'prism-7x7': range(49),
+                        'airyscan': range(32), 'pi-imaging-pda23': range(9, 32)}[detector]
+            return ['crossAll'], [f'x{i:02d}{j:02d}' for i in channels for j in channels], None
+        if averaging_mode == 'custom':
+            averages = _cross_custom_list(values.get('crossAverageList'), 'Averaging list')
+            outputs = _cross_custom_list(values.get('crossOutputList'), 'Output names')
+            if len(averages) != len(outputs):
+                raise ValueError('The averaging list and output names must contain the same number of entries.')
+            if len(set(outputs)) != len(outputs):
+                raise ValueError('Output names must be unique.')
+            if any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name) for name in outputs):
+                raise ValueError('Output names must start with a letter or underscore and contain only letters, digits and underscores.')
+            channels = set({'custom': range(25), 'prism-7x7': range(49),
+                            'airyscan': range(32), 'pi-imaging-pda23': range(9, 32)}[detector])
+            for group in averages:
+                pairs = group.split('+')
+                if any(not re.fullmatch(r'\d+x\d+', pair) for pair in pairs):
+                    raise ValueError('Each averaging entry must contain pairs such as 0x1+1x2.')
+                if any(int(number) not in channels for pair in pairs for number in pair.split('x')):
+                    raise ValueError('An averaging entry refers to a channel outside the selected detector.')
+            return ['crossAll'], outputs, averages
+        if averaging_mode != 'default':
+            raise ValueError('Unknown cross-correlation averaging mode.')
         params = _desktop_crosscorrelation_params(names[detector])
         return params["listOfG"], params["elements"], params["average"]
     raise ValueError("Unsupported correlation mode: " + mode)
+
+
+def _cross_custom_list(value, label):
+    import ast
+    text = str(value or '').strip()
+    if not text:
+        raise ValueError(label + ' must not be empty.')
+    if text.startswith('['):
+        try:
+            items = ast.literal_eval(text)
+        except (SyntaxError, ValueError) as error:
+            raise ValueError(label + ' must be a list of quoted strings or comma-separated entries.') from error
+        if not isinstance(items, (list, tuple)) or not all(isinstance(item, str) for item in items):
+            raise ValueError(label + ' must be a list of strings.')
+    else:
+        items = text.split(',')
+    items = [item.strip() for item in items]
+    if not items or any(not item for item in items):
+        raise ValueError(label + ' cannot contain empty entries.')
+    return items
 
 
 def _native_correlations_to_result(corrs, mode, dwell_us=None, duration_s=None):
@@ -3399,7 +3451,10 @@ def _fit_browser_model_single(payload_json):
     upper_inside = np.nextafter(upper[variable], -np.inf)
     initial[variable] = np.minimum(np.maximum(initial[variable], lower_inside), upper_inside)
     optimized = initial.copy()
-    if np.any(variable):
+    optimized_full = payload.get('_global_optimized_full')
+    if optimized_full is not None:
+        optimized = np.asarray(optimized_full, dtype=float)[np.asarray(model['used'], dtype=int)]
+    elif np.any(variable):
         indices = np.asarray(model["used"], dtype=int)
         full_values = np.asarray(model["all_defaults"], dtype=float).copy()
         full_values[indices] = initial
@@ -3463,8 +3518,71 @@ def _fit_browser_model_single(payload_json):
                        "rmse": float(np.sqrt(np.mean(residuals ** 2)))}, allow_nan=False)
 
 
+def _fit_browser_model_global(payload):
+    """Fit all curves together with the desktop model's shared parameters."""
+    from brighteyes_ffs.fcs.fcs_fit import fit_corr
+    from importlib import import_module
+    model = _FIT_MODELS[payload['model']]
+    taus, values = payload.get('tau_s', []), payload.get('g', [])
+    if not taus or not isinstance(taus[0], list) or len(taus) < 2:
+        raise ValueError('A global fit requires at least two correlation curves.')
+    if len(taus) != len(values):
+        raise ValueError('The number of lag-time and correlation curves differs.')
+    tau = np.asarray(taus[0], dtype=float)
+    if any(np.asarray(t).shape != tau.shape or not np.allclose(t, tau, rtol=1e-10, atol=0, equal_nan=False) for t in taus[1:]):
+        raise ValueError('Global fitting requires identical lag-time vectors for all curves.')
+    if any(len(g) != len(tau) for g in values):
+        raise ValueError('Each correlation curve must match its lag-time vector.')
+    start = min(max(1, int(payload.get('start', 1))), max(len(tau) - 1, 1))
+    requested_stop = int(payload.get('stop', 0))
+    stop = len(tau) if requested_stop <= 0 else min(requested_stop, len(tau))
+    start = min(start, max(stop - 1, 1))
+    G = np.column_stack([np.asarray(g, dtype=float) for g in values])
+    if stop - start < 4 or not np.all(np.isfinite(G[start:stop])) or not np.all(np.isfinite(tau[start:stop]) & (tau[start:stop] > 0)):
+        raise ValueError('Choose at least four finite positive-lag points for every curve.')
+    initial = np.asarray(payload['initial'], dtype=float)
+    if initial.shape != (len(taus), len(model['params'])) or not np.all(np.isfinite(initial)):
+        raise ValueError('Enter finite starting values for every curve and parameter.')
+    used = np.asarray(model['used'], dtype=int)
+    global_mask = np.asarray([True, True, False, False, False, False, False, True, True], dtype=bool)
+    for visible, destination in enumerate(used):
+        if global_mask[destination] and not np.allclose(initial[:, visible], initial[0, visible], rtol=1e-12, atol=0):
+            raise ValueError('Shared parameter ' + model['params'][visible] + ' must have the same starting or fixed value for every curve.')
+    requested = np.asarray(payload.get('fittable', model['fittable']), dtype=bool)
+    if requested.size != len(used):
+        raise ValueError('Fit-parameter checkbox state does not match the selected model.')
+    variable = requested & np.asarray(model['fittable'], dtype=bool)
+    lower, upper = _fit_visible_bounds(model)
+    initial[:, variable] = np.minimum(np.maximum(initial[:, variable], np.nextafter(lower[variable], np.inf)), np.nextafter(upper[variable], -np.inf))
+    param = np.tile(np.asarray(model['all_defaults'], dtype=float)[:, None], (1, len(taus)))
+    param[used, :] = initial.T
+    fit_info = np.zeros(param.shape[0], dtype=int)
+    fit_info[used] = variable.astype(int)
+    factors = np.ones(param.shape[0]); factors[used] = model['factors']
+    if np.any(variable):
+        result = fit_corr(G[start:stop], tau[start:stop], fit_info, param,
+            global_param=global_mask, weights=1, lower_bounds=np.asarray(model['lower'], dtype=float),
+            upper_bounds=np.asarray(model['upper'], dtype=float), param_factors10=factors,
+            fitmodel=getattr(import_module(model['module']), model['function']), max_nfev=3000)
+        param = np.asarray(result.x, dtype=float)
+        if param.shape != (len(fit_info), len(taus)):
+            raise ValueError('The package returned an unexpected global fit parameter shape.')
+    fits = []
+    labels = payload.get('data', [])
+    for index, (t, g) in enumerate(zip(taus, values)):
+        current = dict(payload, tau_s=t, g=g, initial=initial[index].tolist(), start=start, stop=stop,
+                       data=labels[index] if isinstance(labels, list) and index < len(labels) else '',
+                       _global_optimized_full=param[:, index].tolist())
+        fits.append(json.loads(_fit_browser_model_single(json.dumps(current))))
+    return json.dumps({'model': model['label'], 'model_key': payload['model'], 'global_fit': True,
+                       'global_param': global_mask.astype(int).tolist(), 'fits': fits})
+
+
 def fit_browser_model(payload_json):
     payload = json.loads(payload_json)
+    model = _FIT_MODELS[str(payload.get('model') or 'free-diffusion-1')]
+    if model['global_fit']:
+        return _fit_browser_model_global(payload)
     taus, values = payload.get("tau_s", []), payload.get("g", [])
     if taus and isinstance(taus[0], list):
         fits = []
@@ -4741,8 +4859,7 @@ def add_corr_to_joblist(payload=None):
 def _browser_calculate_file(ffs_file, values, analysis=None):
     if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
         raise ValueError("Load a time-trace or TCSPC data file first.")
-    requested_kind = str(values.get("rawDataType") or "auto")
-    data_kind = getattr(ffs_file, "browser_data_kind", "time_trace") if requested_kind == "auto" else requested_kind
+    data_kind = getattr(ffs_file, "browser_data_kind", None) or "time_trace"
     if data_kind == "tcspc":
         result, native_corrs = calculate_tcspc_correlation(ffs_file.browser_input_path, values)
         duration_s = result.get("duration_s")
@@ -4801,8 +4918,7 @@ def add_corr_and_calc(payload=None):
         return _browser_request_raw_reload(ffs_file)
     if ffs_file is None:
         return _browser_response("Choose a time-trace or TCSPC data file before calculating.", browser_action="request_data_file")
-    requested_kind = str(values.get("rawDataType") or "auto")
-    data_kind = getattr(ffs_file, "browser_data_kind", "time_trace") if requested_kind == "auto" else requested_kind
+    data_kind = getattr(ffs_file, "browser_data_kind", None) or "time_trace"
     if data_kind == "tcspc":
         # Arrival-time streams always use BrightEyes' time-tag-to-correlation
         # route, irrespective of the previous selection used for binned data.
@@ -4877,7 +4993,7 @@ def calc_corr_all_files(payload=None):
             return _browser_response("No FFS files are loaded.")
         for ffs_file in image.ffs_list:
             if getattr(ffs_file, "browser_input_path", None):
-                for analysis in ffs_file.analysis_list:
+                for analysis_index, analysis in enumerate(ffs_file.analysis_list):
                     if not getattr(analysis, "browser_calculated", False):
                         analysis_values = getattr(analysis, "browser_values", values)
                         last_result = _browser_calculate_file(ffs_file, analysis_values, analysis=analysis)
@@ -5126,7 +5242,7 @@ def browser_restore_ffs(input_path):
                     fingerprint = np.ravel(fingerprint).tolist() if fingerprint is not None else np.sum(trace, axis=0).tolist()
                     ffs_file.browser_preview = {"traces": trace.T.tolist(), "fingerprint": fingerprint, "step": 1,
                         "dwell_us": dwell, "detector_type": _count_detector_type(trace.shape[1])}
-                for analysis in ffs_file.analysis_list:
+                for analysis_index, analysis in enumerate(ffs_file.analysis_list):
                     corrs = getattr(analysis, "corrs", None)
                     analysis.browser_fits = []
                     if corrs is None or not getattr(corrs, "list_of_g_out", None):
@@ -5138,7 +5254,7 @@ def browser_restore_ffs(input_path):
                     labels = result.get("trace_labels", [])
                     taus = result["tau_s"] if result["tau_s"] and isinstance(result["tau_s"][0], list) else [result["tau_s"]]
                     gs = result["g"] if result["g"] and isinstance(result["g"][0], list) else [result["g"]]
-                    for fit in getattr(analysis, "fits", []):
+                    for fit_index, fit in enumerate(getattr(analysis, "fits", [])):
                         curves = []
                         for index, item in enumerate(fit.fit_all_curves):
                             label = str(item.data)
@@ -5169,7 +5285,12 @@ def browser_restore_ffs(input_path):
                                 "minbound": [float(v) if np.isfinite(v) else None for v in item.minbound],
                                 "maxbound": [float(v) if np.isfinite(v) else None for v in item.maxbound]})
                         if curves:
-                            analysis.browser_fits.append(curves[0] if len(curves) == 1 else {"model": curves[0]["model"], "fits": curves})
+                            record = curves[0] if len(curves) == 1 else {"model": curves[0]["model"], "fits": curves}
+                            fit_group = group.get(f"analysis{analysis_index}/fits/fit{fit_index}") if group is not None else None
+                            if fit_group is not None and bool(fit_group.attrs.get('browser_global_fit', False)):
+                                record['global_fit'] = True
+                                record['global_param'] = np.asarray(fit_group.attrs['browser_global_param'], dtype=int).tolist()
+                            analysis.browser_fits.append(record)
                 active = ffs_file.get_analysis()
                 if active is not None and isinstance(getattr(active, "browser_result", None), dict):
                     ffs_file.browser_result = active.browser_result
@@ -5204,6 +5325,12 @@ def save_session(payload=None):
                     group = exported[f"image{image_index}/file{file_index}"]
                     group.attrs["mark_as_favourite"] = bool(getattr(item, "mark_as_favourite", False))
                     group.attrs["source_folder"] = ""
+                    for analysis_index, analysis in enumerate(item.analysis_list):
+                        for fit_index, record in enumerate(getattr(analysis, 'browser_fits', []) or []):
+                            fit_group = group.get(f'analysis{analysis_index}/fits/fit{fit_index}')
+                            if fit_group is not None and record.get('global_fit'):
+                                fit_group.attrs['browser_global_fit'] = True
+                                fit_group.attrs['browser_global_param'] = np.asarray(record['global_param'], dtype=np.uint8)
         with open(path, "rb") as handle:
             encoded = base64.b64encode(handle.read()).decode("ascii")
     finally:
@@ -5523,7 +5650,8 @@ def _browser_notebook_generator():
         model = next((m for m in _FIT_MODELS.values() if m['label'] == label), None)
         if model is None:
             raise ValueError('Unknown notebook fit model: ' + str(label))
-        return SimpleNamespace(fitfunction_name=model['function'], global_param=None)
+        mask = [True, True, False, False, False, False, False, True, True] if model['global_fit'] else None
+        return SimpleNamespace(fitfunction_name=model['function'], global_param=mask)
     source = _DESKTOP_NOTEBOOK_SOURCE.replace('import nbformat as nbf', '')
     source = source.replace('from .fitmodels import get_fit_model_from_name', '')
     # Infinity in desktop bounds must be a valid name in generated Python.
@@ -5559,8 +5687,8 @@ def create_jupyter_notebook(payload=None):
     if active_fit is not None and active_fit.fit_all_curves:
         for curve in active_fit.fit_all_curves:
             model = next((m for m in _FIT_MODELS.values() if m['label'] == curve.fitfunction_label), None)
-            if model is None or model['global_fit']:
-                raise ValueError("Notebook export does not support this fit model. Select a supported non-global fit or deselect the fit.")
+            if model is None:
+                raise ValueError("Notebook export does not support this fit model.")
             curve.fitfunction = getattr(import_module(model['module']), model['function'])
         active_fit.return_all = lambda field: [getattr(curve, field, None) for curve in active_fit.fit_all_curves]
 
@@ -5573,6 +5701,36 @@ def create_jupyter_notebook(payload=None):
             raise ValueError(str(status))
         with open(path, encoding='utf-8') as handle:
             notebook = json.load(handle)
+    records = getattr(ffs_file.get_analysis(), 'browser_fits', None) or []
+    fit_index = analysis.active_fit
+    original_analysis = _browser_active_analysis()
+    original_records = getattr(original_analysis, 'browser_fits', []) if original_analysis is not None else []
+    global_record = original_records[int(fit_index)] if fit_index is not None and int(fit_index) < len(original_records) else None
+    if active_fit is not None and active_fit.fit_all_curves and model['global_fit']:
+        if not isinstance(global_record, dict) or not global_record.get('global_fit'):
+            raise ValueError('This older fit has no saved global-fit metadata. Refit it globally before exporting the notebook.')
+        curves = active_fit.fit_all_curves
+        first = curves[0]
+        matrix = np.column_stack([curve.startvalues for curve in curves]).tolist()
+        bounds_lo = np.asarray(first.minbound).tolist(); bounds_hi = np.asarray(first.maxbound).tolist()
+        code = f"""start_idx, stop_idx = {list(first.fitrange)!r}
+global_param = np.asarray({global_record['global_param']!r}, dtype=bool)
+fit_info = np.asarray({np.asarray(first.fitarray[:-1]).tolist()!r}, dtype=bool)
+param = np.asarray({matrix!r}, dtype=float)
+lBounds = np.asarray({bounds_lo!r}, dtype=float)
+uBounds = np.asarray({bounds_hi!r}, dtype=float)
+paramFactors10 = np.asarray({np.asarray(first.param_factors10).tolist()!r}, dtype=float)
+G_all, tau, Gstd = G.get_av_corrs(G.list_of_g_out, good_chunks_only=True)
+if stop_idx <= 0:
+    stop_idx = len(tau)
+fitresult = fit_corr(G_all[start_idx:stop_idx, :], tau[start_idx:stop_idx], fit_info, param,
+    weights=1, global_param=global_param, lower_bounds=lBounds, upper_bounds=uBounds,
+    param_factors10=paramFactors10, fitmodel=my_fit_fun)
+print_table(fitresult.x)"""
+        target = next((cell for cell in notebook['cells'] if cell['cell_type'] == 'code' and 'rho_x =' in cell['source'] and 'global_param =' in cell['source']), None)
+        if target is None:
+            raise ValueError('Could not locate the global-fit notebook cell.')
+        target['source'] = code
     notebook['cells'].insert(1, _browser_notebook_markdown(
         'This notebook recreates the selected analysis. Place the raw data file next to this notebook or edit the `file` variable below to its path. Install a compatible version of BrightEyes-FFS and its dependencies before running.'))
     return _browser_response('Analysis notebook prepared. Set the raw data path before running it.',
@@ -6241,7 +6399,7 @@ def browser_action_catalog():
         });
         byId("fitSummary").hidden = !model.global_fit;
         byId("fitSummary").textContent = model.global_fit
-          ? "Desktop global constraints are not yet coupled in the browser; curves are fitted independently."
+          ? "Global fit: concentration, diffusion coefficient and flow velocities are shared across curves."
           : "";
       }
 
@@ -6406,9 +6564,36 @@ def browser_action_catalog():
         return text.length > limit ? text.slice(0, Math.max(1, limit - 3)) + "..." : text;
       }
 
+      function updateAlgorithmChoices(file) {
+        const select = byId("algorithm");
+        const kind = file && file.data_kind;
+        const isArrival = kind === "tcspc";
+        const isBinned = kind === "time_trace";
+        const allMode = ["all_autocorr", "all_cross"].includes(byId("correlationType").value);
+        Array.from(select.options).forEach(function (option) {
+          // Time-tag-to-corr also supports binned spot-variation traces;
+          // its browser path does not support the two all-detector modes.
+          const unavailable = isArrival ? option.value !== "tt2corr"
+            : isBinned && allMode && option.value === "tt2corr";
+          option.disabled = unavailable;
+          option.hidden = unavailable;
+        });
+        const selected = select.selectedOptions[0];
+        if (!selected || selected.disabled) select.value = isArrival ? "tt2corr" : "multipletau";
+        select.title = isBinned && byId("correlationType").value === "all_cross"
+          ? "All cross-correlations use the package's sparse-matrix algorithm." : "";
+      }
+
+      function updateCrossAveragingControls() {
+        const isCross = byId("correlationType").value === "all_cross";
+        byId("crossAveragingControls").hidden = !isCross;
+        byId("crossCustomAveraging").hidden = !isCross || byId("crossAveraging").value !== "custom";
+      }
+
       function renderView(view) {
         if (!view) return;
         activeView = view;
+        updateAlgorithmChoices(view.active_file);
         const activeImage = view.images && view.images[view.active_image];
         const files = activeImage ? activeImage.files : [];
         byId("newFileButton").parentElement.classList.toggle("is-empty", files.length === 0);
@@ -7114,6 +7299,7 @@ def browser_action_catalog():
         if (response.algorithm && byId("algorithm")) {
           byId("algorithm").value = response.algorithm;
         }
+        updateAlgorithmChoices(response.view ? response.view.active_file : activeView && activeView.active_file);
         if (response.preview) drawPreview(response.preview);
         if (response.show_chunks_mode) byId("showChunksCorrSelect").value = response.show_chunks_mode;
         if (response.fingerprint) drawPreview({ fingerprint: response.fingerprint, total: [], step: 1 });
@@ -7269,6 +7455,12 @@ def browser_action_catalog():
       }
 
       function bindBrowserOnlyInputs() {
+        byId("correlationType").addEventListener("change", function () {
+          updateAlgorithmChoices(activeView && activeView.active_file);
+          updateCrossAveragingControls();
+        });
+        byId("crossAveraging").addEventListener("change", updateCrossAveragingControls);
+        updateCrossAveragingControls();
         // Keep the example accessible by keyboard navigation; dismiss it
         // after an actual click, edit, or activation, including its own click.
         const dismissExample = function () {
