@@ -563,7 +563,9 @@
     .chunks-panel .control-grid { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; }
     .chunks-panel .control-grid > label { flex: 0 1 auto; min-width: 0; }
     .chunks-panel #chunkNumberInput { width: 66px; min-height: 32px; padding: 5px 6px; font-weight: 400; }
-    .chunks-panel #showChunksCorrSelect { width: 118px; min-height: 32px; padding: 5px 6px; font-weight: 400; }
+    .correlation-view-control { position: absolute; top: 24px; right: 22px; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font-size: .7rem; }
+    .correlation-view-control span { margin: 0; align-self: center; white-space: nowrap; }
+    .correlation-view-control select { width: 118px; min-height: 28px; padding: 4px 6px; font-size: .7rem; font-weight: 400; }
     .chunks-panel .control-grid > label > span { font-size: .7rem; margin-bottom: 3px; }
     .chunks-panel .check-label { line-height: 1.1; }
     .chunks-panel .control-grid > .tool-button { min-height: 32px; padding: 6px 7px; font-size: .7rem; font-weight: 400; white-space: nowrap; }
@@ -1744,7 +1746,6 @@
         <div class="panel-body">
           <div class="control-grid">
             <label><span>Chunk number</span><input id="chunkNumberInput" type="number" min="0" step="1" value="0"></label>
-            <label><span>Show correlation</span><select id="showChunksCorrSelect"><option value="average">Average</option><option value="current">Current chunk</option></select></label>
             <label class="check-label"><input id="chunkOnInput" type="checkbox" checked><span>Chunk on</span></label>
             <button class="tool-button" type="button" data-python-handler="filter_out_bad_chunks">Filter bad chunks</button>
             <button class="tool-button" type="button" data-python-handler="turn_on_all_chunks">Use all chunks</button>
@@ -1806,6 +1807,7 @@
 
         <div class="plot-wrap">
           <canvas id="correlationCanvas" aria-label="Correlation versus lag time chart"></canvas>
+          <label class="correlation-view-control"><span>Show correlation</span><select id="showChunksCorrSelect"><option value="average">Average</option><option value="current">Current chunk</option></select></label>
         </div>
         <div id="diffusionPlotWrap" class="plot-wrap" hidden>
           <canvas id="diffusionCanvas" aria-label="Diffusion time versus beam waist squared chart"></canvas>
@@ -6418,6 +6420,53 @@ def browser_action_catalog():
         renderFitModel(select.value || "free-diffusion-1");
       }
 
+      function showFitInControls(fit) {
+        if (!fit) return;
+        const curves = (Array.isArray(fit.fits) ? fit.fits : [fit]).filter(Boolean);
+        if (!curves.length) return;
+        const first = curves[0];
+        const candidate = fit.model_key || first.model_key;
+        const label = fit.model || first.model || first.fitfunction_label;
+        const key = fitModels[candidate] ? candidate : Object.keys(fitModels).find(function (name) {
+          return fitModels[name].label === label;
+        });
+        // Unknown or legacy models must not overwrite the selected controls.
+        if (!key) return;
+        const model = fitModels[key];
+        byId("fitModel").value = key;
+        renderFitModel(key);
+        model.params.forEach(function (name, index) {
+          const field = byId("fitParam" + index);
+          const checkbox = byId("fitParamFit" + index);
+          const values = curves.map(function (curve) {
+            const direct = curve.parameters && curve.parameters[name];
+            if (direct !== null && direct !== undefined && Number.isFinite(Number(direct))) return Number(direct);
+            const nativeIndex = Array.isArray(curve.paramidx) ? curve.paramidx[index] : model.fitfunctionParamUsed[index];
+            const value = Array.isArray(curve.startvalues) ? curve.startvalues[nativeIndex] : null;
+            return value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null;
+          });
+          if (values.every(function (value) { return value !== null; })) {
+            field.value = values.map(function (value) { return String(Number(value.toPrecision(4))); }).join(", ");
+          } else {
+            field.value = "";
+            field.placeholder = "Not available in this fit";
+          }
+          const states = curves.map(function (curve) {
+            const nativeIndex = Array.isArray(curve.paramidx) ? curve.paramidx[index] : model.fitfunctionParamUsed[index];
+            return Array.isArray(curve.fitarray) && curve.fitarray[nativeIndex] !== undefined
+              ? Boolean(curve.fitarray[nativeIndex]) : null;
+          });
+          if (states.every(function (state) { return state !== null; })) {
+            checkbox.checked = states[0];
+            checkbox.indeterminate = states.some(function (state) { return state !== states[0]; });
+            checkbox.title = checkbox.indeterminate ? "Fit state differs between curves" : "";
+          }
+        });
+        const range = Array.isArray(first.fitrange) ? first.fitrange : [first.start, first.stop];
+        if (range[0] !== null && range[0] !== undefined && Number.isFinite(Number(range[0]))) byId("fitStart").value = String(Math.max(1, Number(range[0])));
+        if (range[1] !== null && range[1] !== undefined && Number.isFinite(Number(range[1]))) byId("fitStop").value = String(Number(range[1]));
+      }
+
       function renderImage(view) {
         const preview = byId("imagePreview");
         const button = byId("imageNameButton");
@@ -7181,6 +7230,7 @@ def browser_action_catalog():
 
       function renderResult(result, fit) {
         if (!result) return;
+        if (fit) showFitInControls(fit);
         byId("resultEmpty").hidden = true;
         byId("resultContent").hidden = false;
         byId("resultHeading").textContent = result.mode || "Correlation";
