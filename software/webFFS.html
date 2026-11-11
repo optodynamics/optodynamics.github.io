@@ -1707,6 +1707,7 @@
             <button id="fitUseView" class="tool-button" type="button" title="Use the lag-time limits currently visible in the correlation plot">From plot</button>
           </div>
           <div id="fitParameterFields" class="fit-parameter-list"></div>
+          <label class="check-label" title="Weight correlation points using variation between enabled chunks"><input id="fitWeighted" type="checkbox"><span>Weighted fit</span></label>
           <p id="fitSummary" class="timing-note" hidden></p>
           <div class="placeholder-actions"><button class="tool-button" type="button" data-python-handler="overwritefit">Overwrite fit</button><button class="tool-button" type="button" data-python-handler="newfit">New fit</button></div>
         </div>
@@ -3467,6 +3468,7 @@ def _fit_browser_model_single(payload_json):
         fit_function = getattr(import_module(model["module"]), model["function"])
         fit_result = fit_corr(
             g_fit, tau_fit, full_fit, full_values,
+            weights=np.asarray(payload['weights'], dtype=float)[start:stop] if payload.get('weights') is not None else 1,
             lower_bounds=np.asarray(model["lower"], dtype=float),
             upper_bounds=np.asarray(model["upper"], dtype=float),
             param_factors10=factors, fitmodel=fit_function, max_nfev=3000,
@@ -3489,6 +3491,7 @@ def _fit_browser_model_single(payload_json):
     native_maxbound = np.asarray(model["upper"], dtype=float).copy()
     native_factors10 = np.ones(native_size)
     native_fitarray = np.zeros(native_size + 1, dtype=int)  # final entry: weighted fit
+    native_fitarray[-1] = int(bool(payload.get('weighted', False)))
     for visible_index, destination in enumerate(paramidx):
         native_startvalues[destination] = optimized[visible_index]
         native_minbound[destination] = lower[visible_index]
@@ -3562,8 +3565,9 @@ def _fit_browser_model_global(payload):
     fit_info[used] = variable.astype(int)
     factors = np.ones(param.shape[0]); factors[used] = model['factors']
     if np.any(variable):
+        weight_matrix = np.asarray(payload['weights'], dtype=float).T[start:stop] if payload.get('weights') is not None else 1
         result = fit_corr(G[start:stop], tau[start:stop], fit_info, param,
-            global_param=global_mask, weights=1, lower_bounds=np.asarray(model['lower'], dtype=float),
+            global_param=global_mask, weights=weight_matrix, lower_bounds=np.asarray(model['lower'], dtype=float),
             upper_bounds=np.asarray(model['upper'], dtype=float), param_factors10=factors,
             fitmodel=getattr(import_module(model['module']), model['function']), max_nfev=3000)
         param = np.asarray(result.x, dtype=float)
@@ -3596,6 +3600,8 @@ def fit_browser_model(payload_json):
                 current["data"] = data_labels[min(index, len(data_labels) - 1)] if data_labels else ""
             if initials and isinstance(initials[0], list):
                 current["initial"] = initials[min(index, len(initials) - 1)]
+            if payload.get('weights') is not None:
+                current['weights'] = payload['weights'][index]
             fits.append(json.loads(_fit_browser_model_single(json.dumps(current))))
         return json.dumps({"model": _FIT_MODELS[str(payload.get("model") or "free-diffusion-1")]["label"], "fits": fits})
     return _fit_browser_model_single(payload_json)
@@ -4022,6 +4028,7 @@ def _browser_fit_payload(values, result):
         "start": max(1, _browser_int(values.get("fitStart"), 1)),
         "stop": _browser_int(values.get("fitStop"), 0),
         "model": model_key,
+        "weighted": bool(values.get('fitWeighted', False)),
         "data": result.get("trace_labels", [""]) if number_of_curves > 1 else (result.get("trace_labels") or [""])[0],
         "initial": initial[0] if number_of_curves == 1 else initial,
         "fittable": [bool(values.get("fitParamFit" + str(index), model["fittable"][index]))
@@ -5492,6 +5499,53 @@ def filter_out_bad_chunks(payload=None):
     )
 
 
+def _browser_weighted_fit_values(ffs_file, result, payload):
+    """Reproduce desktop inverse-variance weights from enabled chunks."""
+    analysis = _browser_active_analysis(ffs_file)
+    native = getattr(analysis, 'corrs', None) if analysis is not None else None
+    chunks = result.get('chunks', [])
+    labels = result.get('trace_labels', [])
+    active = list(getattr(ffs_file, 'browser_active_chunks', []) or [])
+    inverses, fallback = [], []
+    for index, chunk_list in enumerate(chunks):
+        selected = [chunk for n, chunk in enumerate(chunk_list) if n < len(active) and active[n]]
+        if len(selected) < 2:
+            raise ValueError('Weighted fitting needs at least two enabled chunks to estimate variation.')
+        arr = np.asarray(selected, dtype=float)
+        std = None
+        curve = getattr(native, labels[index], None) if native is not None and index < len(labels) else None
+        if curve is not None:
+            average = np.asarray(curve.average([n for n, enabled in enumerate(active) if enabled]))
+            if average.ndim == 2 and average.shape[1] > 2 and average.shape[0] == arr.shape[1]:
+                std = np.asarray(average[:, -1], dtype=float)
+        if std is None:
+            std = np.std(arr[:, :, 1], axis=0)
+        # The desktop single-curve path uses equal weights if the full curve
+        # has zero/missing deviations. State that fallback in the UI.
+        if not np.all(np.isfinite(std) & (std > 0)):
+            inverses.append(None)
+            fallback.append(labels[index] if index < len(labels) else str(index + 1))
+            continue
+        inverses.append(1.0 / np.square(std))
+    if not inverses:
+        raise ValueError('Weighted fitting requires correlation chunks.')
+    global_fit = bool(_FIT_MODELS[payload['model']]['global_fit'])
+    positive = [inverse for inverse in inverses if inverse is not None]
+    shared_min = min(float(np.min(inverse)) for inverse in positive) if positive and global_fit else None
+    all_weights = []
+    for index, inverse in enumerate(inverses):
+        if inverse is None:
+            all_weights.append(np.ones(len(chunks[index][0]), dtype=float).tolist())
+            continue
+        start = min(max(1, int(payload.get('start', 1))), max(len(inverse) - 1, 1))
+        stop = int(payload.get('stop', 0))
+        stop = len(inverse) if stop <= 0 else min(stop, len(inverse))
+        start = min(start, max(stop - 1, 1))
+        scale = shared_min if global_fit else float(np.min(inverse[start:stop]))
+        all_weights.append(np.clip(inverse / scale, 1, 100).tolist())
+    return all_weights, fallback
+
+
 def _browser_fit_current(values, replace=False):
     ffs_file = _browser_current_file()
     result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
@@ -5507,7 +5561,12 @@ def _browser_fit_current(values, replace=False):
     result = average_response.get("result")
     if not isinstance(result, dict):
         raise ValueError("Could not calculate the average of the enabled chunks for fitting.")
-    fit = json.loads(fit_browser_model(json.dumps(_browser_fit_payload(values, result))))
+    payload = _browser_fit_payload(values, result)
+    fallback = []
+    if payload['weighted']:
+        weights, fallback = _browser_weighted_fit_values(ffs_file, result, payload)
+        payload['weights'] = weights if isinstance(payload['tau_s'][0], list) else weights[0]
+    fit = json.loads(fit_browser_model(json.dumps(payload)))
     ffs_file.browser_fit = fit
     analysis = _browser_active_analysis(ffs_file)
     if analysis is not None:
@@ -5535,7 +5594,8 @@ def _browser_fit_current(values, replace=False):
     fit_values["fitStart"] = str(int(curves[0].get("start", 0)))
     fit_values["fitStop"] = str(int(curves[0].get("stop", 0)))
     return _browser_response(
-        ("Overwrote" if replace else "Created") + " a " + fit["model"] + " fit.",
+        ("Overwrote" if replace else "Created") + " a " + fit["model"] + " fit." +
+        (" Equal weights were used for curves with missing or zero deviation: " + ', '.join(fallback) + "." if fallback else ""),
         result=result,
         fit=fit,
         fit_values=fit_values,
@@ -6435,6 +6495,16 @@ def browser_action_catalog():
         const model = fitModels[key];
         byId("fitModel").value = key;
         renderFitModel(key);
+        const weightStates = curves.map(function (curve) {
+          return Array.isArray(curve.fitarray) && curve.fitarray.length ? Boolean(curve.fitarray[curve.fitarray.length - 1]) : null;
+        });
+        if (weightStates.every(function (state) { return state !== null; })) {
+          byId("fitWeighted").checked = weightStates[0];
+          byId("fitWeighted").indeterminate = weightStates.some(function (state) { return state !== weightStates[0]; });
+        } else {
+          byId("fitWeighted").checked = false;
+          byId("fitWeighted").indeterminate = false;
+        }
         model.params.forEach(function (name, index) {
           const field = byId("fitParam" + index);
           const checkbox = byId("fitParamFit" + index);
