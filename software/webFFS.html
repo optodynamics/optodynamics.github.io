@@ -551,6 +551,10 @@
     .fit-range-row label { flex: 0 1 90px; min-width: 0; }
     .fit-range-row input { width: 100%; }
     .fit-range-row button { flex: 0 0 auto; white-space: nowrap; }
+    .analysis-tree-row { display: flex; align-items: center; gap: 8px; }
+    .analysis-tree-row select { min-width: 0; flex: 1 1 auto; font-size: .85rem; }
+    .analysis-tree-row button { flex: 0 0 auto; font-weight: 400; }
+    @media (max-width: 600px) { .analysis-tree-row { flex-wrap: wrap; } .analysis-tree-row select { flex-basis: 100%; } }
 
     .placeholder-actions {
       flex-wrap: wrap;
@@ -1530,6 +1534,13 @@
       <span class="startup-step" id="startupStep">This can take a few seconds the first time.</span>
     </div>
   </div>
+  <div class="startup-overlay is-hidden" id="correlationWaitOverlay" role="status" aria-live="assertive" aria-label="Calculating correlations">
+    <div class="startup-card">
+      <div class="startup-mark" aria-hidden="true">⌁</div>
+      <h2>Please wait…</h2>
+      <p>Calculating correlations.<br>The page may be temporarily unresponsive.</p>
+    </div>
+  </div>
   <main class="shell">
     <header class="topbar">
       <div>
@@ -1737,7 +1748,7 @@
       <section class="panel" aria-labelledby="analysisTreeHeading">
         <div class="panel-heading"><h2 id="analysisTreeHeading">Correlations</h2></div>
         <div class="panel-body">
-          <label class="wide"><select id="analysisSelect" aria-label="Active analysis"><option value="0">Correlation 1</option></select></label>
+          <div class="analysis-tree-row"><select id="analysisSelect" aria-label="Active analysis"><option value="0">Correlation 1</option></select><button id="removeSelectedAnalysis" class="tool-button" type="button" hidden>Remove current correlation</button></div>
           <!-- TODO(web-parity): show fitted curves as nested items once all desktop fit models are exposed in the browser. -->
         </div>
       </section>
@@ -1776,8 +1787,6 @@
         <button class="tool-button" type="button" data-python-handler="change_image_file">Change image</button>
         <button class="tool-button" type="button" data-python-handler="open_session">Open session</button>
         <button class="tool-button" type="button" data-python-handler="save_session">Save session (.ffs)</button>
-        <button class="tool-button" type="button" data-python-handler="remove_current_fit">Remove current fit</button>
-        <button class="tool-button" type="button" data-python-handler="remove_current_analysis">Remove current correlation</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_ffs_file">Current FFS file</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_image">Current image</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
@@ -2678,7 +2687,7 @@ def _load_tcspc_time_trace(ffs_file, maximum_bins=10000):
     }
 
 
-def _format_browser_rows(columns, rows, maximum_rows=12):
+def _format_browser_rows(columns, rows, maximum_rows=12, total_rows=None):
     """Return a deliberately small, JSON-safe table preview."""
     rows = np.asarray(rows)[:maximum_rows]
     return {
@@ -2687,16 +2696,19 @@ def _format_browser_rows(columns, rows, maximum_rows=12):
                   for value in row] for row in rows],
         "shown": int(rows.shape[0]),
         "limit": int(maximum_rows),
+        "total_rows": int(total_rows) if total_rows is not None else None,
     }
 
 
 def _count_rows_preview(input_path, dataset_path, maximum_rows=12):
     with h5py.File(input_path, "r") as handle:
-        data = np.asarray(handle[dataset_path][:maximum_rows])
+        dataset = handle[dataset_path]
+        total_rows = dataset.shape[0]
+        data = np.asarray(dataset[:maximum_rows])
     if data.ndim != 2:
         data = data.reshape((data.shape[0], -1))
     return _format_browser_rows(
-        ["channel " + str(index) for index in range(data.shape[1])], data, maximum_rows
+        ["channel " + str(index) for index in range(data.shape[1])], data, maximum_rows, total_rows
     )
 
 
@@ -2706,7 +2718,9 @@ def _tcspc_rows_preview(input_path, channel, maximum_rows=12):
     channel = int(channel)
     if channel not in fields:
         raise ValueError("The selected TCSPC detector channel is not available in this file.")
-    arrivals = np.asarray(getattr(raw_data, fields[channel]), dtype=float).copy()
+    detector = getattr(raw_data, fields[channel])
+    total_rows = len(detector)
+    arrivals = np.asarray(detector[:maximum_rows], dtype=float).copy()
     macrotime_s = _browser_number(getattr(raw_data, "macrotime", None))
     microtime_s = _browser_number(getattr(raw_data, "microtime", None))
     # Read resolutions individually: the package may omit both attributes if
@@ -2744,7 +2758,7 @@ def _tcspc_rows_preview(input_path, channel, maximum_rows=12):
     columns = ["macrotime (" + macro_unit + ")", "microtime (" + micro_unit + ")", "weight"]
     if arrivals.ndim == 2 and arrivals.shape[1] > len(columns):
         columns.extend("column " + str(index) for index in range(len(columns), arrivals.shape[1]))
-    return _format_browser_rows(columns[:arrivals.shape[1]], arrivals, maximum_rows)
+    return _format_browser_rows(columns[:arrivals.shape[1]], arrivals, maximum_rows, total_rows)
 
 
 def calculate_time_trace_native(input_path, values, metadata=None, split=None):
@@ -3565,14 +3579,26 @@ def _fit_browser_model_global(payload):
     fit_info[used] = variable.astype(int)
     factors = np.ones(param.shape[0]); factors[used] = model['factors']
     if np.any(variable):
-        weight_matrix = np.asarray(payload['weights'], dtype=float).T[start:stop] if payload.get('weights') is not None else 1
+        if payload.get('weights') is not None:
+            supplied_weights = np.asarray(payload['weights'], dtype=float)
+            if supplied_weights.shape != (len(taus), len(tau)) or not np.all(np.isfinite(supplied_weights) & (supplied_weights > 0)):
+                raise ValueError('Global fit weights must be finite and positive for every curve and lag time.')
+            weight_matrix = supplied_weights.T[start:stop]
+        else:
+            weight_matrix = 1
         result = fit_corr(G[start:stop], tau[start:stop], fit_info, param,
             global_param=global_mask, weights=weight_matrix, lower_bounds=np.asarray(model['lower'], dtype=float),
             upper_bounds=np.asarray(model['upper'], dtype=float), param_factors10=factors,
-            fitmodel=getattr(import_module(model['module']), model['function']), max_nfev=3000)
+            fitmodel=getattr(import_module(model['module']), model['function']), max_nfev=3000,
+            x_scale='jac', ftol=1e-12, xtol=1e-12, gtol=1e-12)
+        if not getattr(result, 'success', True):
+            raise ValueError('Global fit did not converge: ' + str(getattr(result, 'message', 'optimizer failed')))
         param = np.asarray(result.x, dtype=float)
-        if param.shape != (len(fit_info), len(taus)):
+        if param.shape != (len(fit_info), len(taus)) or not np.all(np.isfinite(param)):
             raise ValueError('The package returned an unexpected global fit parameter shape.')
+        if any(not np.allclose(param[index], param[index, 0], rtol=1e-8, atol=1e-12)
+               for index in np.flatnonzero(global_mask & fit_info.astype(bool))):
+            raise ValueError('The package returned inconsistent values for a shared global-fit parameter.')
     fits = []
     labels = payload.get('data', [])
     for index, (t, g) in enumerate(zip(taus, values)):
@@ -4744,10 +4770,11 @@ def chunk_checkbox_change(payload=None):
             message="At least one chunk must remain enabled; the last active chunk was kept on.",
         )
 
+    previous_active = active.copy()
     active[selected] = requested_enabled
     ffs_file.browser_selected_chunk = selected
     ffs_file.browser_active_chunks = active
-    return show_chunks_corr_change(payload)
+    return _browser_refit_after_chunk_change(payload, previous_active)
 
 
 def show_chunks_corr_change(payload=None, message=None):
@@ -4831,9 +4858,11 @@ def turn_on_all_chunks(payload=None):
     count = len(chunks[0]) if chunks and chunks[0] else 0
     if not count:
         return _browser_response("Calculate a correlation with chunks before enabling them.")
+    previous_active = list(getattr(ffs_file, 'browser_active_chunks', None) or [True] * count)
     ffs_file.browser_active_chunks = [True] * count
-    return show_chunks_corr_change(
+    return _browser_refit_after_chunk_change(
         payload,
+        previous_active,
         message="Enabled all " + str(count) + " chunks and updated the average correlation.",
     )
 
@@ -4947,11 +4976,21 @@ def browser_prepare_worker_calculation(payload_json):
     payload = json.loads(payload_json or "{}")
     values = _browser_values(payload)
     ffs_file = _browser_current_file()
-    if ffs_file is None or not getattr(ffs_file, "browser_dataset_path", None):
-        raise ValueError("Choose an H5 count-data file before calculating.")
+    if ffs_file is None or not getattr(ffs_file, 'browser_input_path', None):
+        raise ValueError('Reload the original raw data before calculating.')
+    kind = getattr(ffs_file, 'browser_data_kind', None) or 'time_trace'
+    if kind == 'time_trace' and not getattr(ffs_file, 'browser_dataset_path', None):
+        raise ValueError('Choose a numeric count dataset before calculating.')
+    if kind == 'tcspc':
+        values['algorithm'] = 'tt2corr'
     image = _browser_current_image()
     return json.dumps({
-        "dataset_path": ffs_file.browser_dataset_path,
+        "dataset_path": getattr(ffs_file, 'browser_dataset_path', None),
+        "data_kind": kind,
+        "input_path": ffs_file.browser_input_path,
+        "metadata": {k: v for k, v in vars(ffs_file.metadata).items()
+                     if v is None or isinstance(v, (str, bool, int, float))},
+        "dataset_shape": getattr(ffs_file, 'browser_dataset_shape', None),
         "dwell_us": _browser_number(values.get("dwellInput"), getattr(ffs_file.metadata, "time_resolution", 1.0)),
         "values": values,
         "active_chunks": getattr(ffs_file, "browser_active_chunks", None),
@@ -4960,22 +4999,59 @@ def browser_prepare_worker_calculation(payload_json):
     }, allow_nan=False)
 
 
+def browser_worker_calculate(job_json, input_path):
+    """Run the same correlation routes inside the worker's Python runtime."""
+    import pickle
+    from types import SimpleNamespace
+    job = json.loads(job_json)
+    values = job['values']
+    native = None
+    if job['data_kind'] == 'tcspc':
+        result, native = calculate_tcspc_correlation(input_path, values)
+    elif str(values.get('algorithm') or 'multipletau') != 'tt2corr':
+        metadata = FFSmetadata()
+        for key, value in job.get('metadata', {}).items():
+            setattr(metadata, key, value)
+        holder = SimpleNamespace(metadata=metadata, browser_dataset_shape=job.get('dataset_shape'))
+        split = _browser_native_split_size(holder, values)
+        result, native = calculate_time_trace_native(input_path, values, metadata=metadata, split=split)
+    else:
+        if values.get('correlationType') in ('all_autocorr', 'all_cross'):
+            raise ValueError('For binned time traces, choose Multipletau or Wiener-Khinchin for this correlation mode.')
+        result = json.loads(calculate_correlation(input_path, job['dataset_path'],
+            values.get('algorithm', 'multipletau'), job['dwell_us'], values.get('correlationType', 'sv_fcs'),
+            values.get('signalA', 'central'), values.get('signalB', 'single'), values.get('customA', '12'),
+            values.get('customB', '13'), _browser_int(values.get('lagInput'), 16),
+            _browser_number(values.get('chunkSizeInput'), 1.0), job.get('active_chunks')))
+    return json.dumps({'result': result, 'native': base64.b64encode(pickle.dumps(native)).decode('ascii') if native is not None else None},
+                      allow_nan=False, default=_browser_json_default)
+
+
 def browser_store_worker_correlation(job_json, result_json):
     """Attach a worker-produced correlation to the matching FFS analysis."""
-    job, result = json.loads(job_json), json.loads(result_json)
+    import pickle
+    job, output = json.loads(job_json), json.loads(result_json)
+    result = output['result']
+    native = pickle.loads(base64.b64decode(output['native'])) if output.get('native') else None
     image_index, file_index = _browser_int(job.get("image_index"), 0), _browser_int(job.get("file_index"), 0)
     if not 0 <= image_index < len(ffslib.lib):
         raise ValueError("The file selected for this calculation no longer exists.")
-    ffslib.active_image = image_index
     image = ffslib.lib[image_index]
     if not 0 <= file_index < image.num_files:
         raise ValueError("The file selected for this calculation no longer exists.")
-    image.active_ffs = file_index
     ffs_file = image.get_ffs_file(file_index)
+    if getattr(ffs_file, 'browser_input_path', None) != job['input_path']:
+        raise ValueError('The raw file changed while the correlation was running; the result was not attached.')
     values = job["values"]
+    duration = _browser_number(result.get('duration_s'))
+    if duration is not None and duration > 0:
+        ffs_file.metadata.duration = duration
     analysis = _browser_add_analysis(ffs_file, values)
-    _browser_result_to_analysis(ffs_file, result, values, analysis=analysis)
-    return _browser_response("Calculated " + result["mode"] + " in a background worker.", result=result)
+    _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=native)
+    if _browser_current_file() is ffs_file:
+        return _browser_response("Calculated " + result["mode"] + " in a background worker.", result=result,
+                                 preview=_browser_analysis_preview(ffs_file, analysis))
+    return _browser_response('Background correlation completed for ' + str(ffs_file.fname) + '.')
 
 
 def calc_corr_all_files(payload=None):
@@ -5371,24 +5447,50 @@ def new_session(payload=None):
 def remove_current_fit(payload=None):
     ffs_file = _browser_current_file()
     analysis = _browser_active_analysis(ffs_file)
-    if ffs_file is None or not isinstance(getattr(ffs_file, "browser_fit", None), dict):
+    if ffs_file is None or analysis is None:
         return _browser_response("There is no current fit to remove.")
+    selection = str(_browser_values(payload).get('analysisSelect') or '')
+    parts = selection.split(':')
+    if len(parts) != 3 or parts[0] != 'fit' or _browser_int(parts[1], -1) != ffs_file.active_analysis:
+        return _browser_response('Select the fit to remove.')
+    index = _browser_int(parts[2], -1)
+    records = list(getattr(analysis, 'browser_fits', []) or [])
+    if not 0 <= index < len(records):
+        return _browser_response('That fit is no longer available.')
+    del records[index]
+    analysis.browser_fits = records
+    if index < len(analysis.fits):
+        del analysis.fits[index]
     ffs_file.browser_fit = None
-    if analysis is not None:
-        analysis.browser_fit = None
-        analysis.fits = []
-        analysis.active_fit = None
-    return _browser_response("Removed the current fit.", result=getattr(ffs_file, "browser_result", None))
+    ffs_file.browser_active_fit_index = None
+    analysis.browser_fit = None
+    analysis.active_fit = None
+    response = json.loads(show_chunks_corr_change({'values': {'showChunksCorrSelect': 'average'}}))
+    if 'result' not in response:
+        response['result'] = getattr(ffs_file, 'browser_result', None)
+    response.update(message='Removed the selected fit.', show_chunks_mode='average', clear_diffusion_law=True, view=_browser_view())
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
 
 
 def remove_current_analysis(payload=None):
     ffs_file = _browser_current_file()
     if ffs_file is None or ffs_file.num_analyses < 1:
         return _browser_response("There is no current correlation to remove.")
+    selection = str(_browser_values(payload).get('analysisSelect') or '')
+    parts = selection.split(':')
+    if len(parts) != 2 or parts[0] != 'corr' or _browser_int(parts[1], -1) != ffs_file.active_analysis:
+        return _browser_response('Select the correlation to remove and try again.')
     ffs_file.remove_analysis(ffs_file.active_analysis)
     ffs_file.browser_result = None
     ffs_file.browser_fit = None
-    return _browser_response("Removed the current correlation.")
+    ffs_file.browser_chunk_source = None
+    ffs_file.browser_active_fit_index = None
+    if ffs_file.num_analyses and ffs_file.active_analysis is not None:
+        response = json.loads(show_analysis({'values': {'analysisSelect': 'corr:' + str(ffs_file.active_analysis), 'showChunksCorrSelect': 'average'}}))
+        response.update(message='Removed the selected correlation and its fits.', clear_diffusion_law=True, show_chunks_mode='average')
+        return json.dumps(response, allow_nan=False, default=_browser_json_default)
+    return _browser_response('Removed the selected correlation and its fits.', clear_result=True, clear_diffusion_law=True,
+                             preview=_browser_analysis_preview(ffs_file, None))
 
 
 def remove_current_ffs_file(payload=None):
@@ -5488,10 +5590,12 @@ def filter_out_bad_chunks(payload=None):
         selected = min(max(int(getattr(ffs_file, "browser_selected_chunk", 0)), 0), len(active) - 1)
         active[selected] = True
 
+    previous_active = list(getattr(ffs_file, 'browser_active_chunks', None) or [True] * len(active))
     ffs_file.browser_active_chunks = active
     analysis.settings.chunks_off = np.asarray(active, dtype=int)
-    return show_chunks_corr_change(
+    return _browser_refit_after_chunk_change(
         payload,
+        previous_active,
         message=(
             "Filtered chunks using " + filt + ": marked " + str(active.count(False)) +
             " of " + str(len(active)) + " inactive for all correlation curves."
@@ -5546,6 +5650,96 @@ def _browser_weighted_fit_values(ffs_file, result, payload):
     return all_weights, fallback
 
 
+def _browser_refit_after_chunk_change(payload, previous_active, message=None):
+    """Refit transactionally when the averaging mask changes."""
+    ffs_file = _browser_current_file()
+    analysis = _browser_active_analysis(ffs_file)
+    current_active = list(getattr(ffs_file, 'browser_active_chunks', []) or [])
+    records = list(getattr(analysis, 'browser_fits', []) or []) if analysis is not None else []
+    if not records or current_active == list(previous_active):
+        return show_chunks_corr_change(payload, message=message)
+    # Fits always describe the mean of enabled chunks, even if the user was
+    # previously viewing a single chunk. Keep the old fits until all succeed.
+    average_payload = {'values': dict(_browser_values(payload), showChunksCorrSelect='average')}
+    response = json.loads(show_chunks_corr_change(average_payload))
+    result = response['result']
+    updated = []
+    try:
+        for record in records:
+            curves = _browser_fit_curves(record)
+            if not curves:
+                raise ValueError('A saved fit has no curves.')
+            first = curves[0]
+            key = record.get('model_key') or first.get('model_key')
+            if key not in _FIT_MODELS:
+                key = next((k for k, m in _FIT_MODELS.items() if m['label'] == first.get('model')), None)
+            if key is None:
+                raise ValueError('A saved fit uses an unsupported or unknown model.')
+            model = _FIT_MODELS[key]
+            if model['global_fit'] and not record.get('global_fit'):
+                raise ValueError('An older fit lacks global-fit metadata; refit it manually first.')
+            labels = result.get('trace_labels', [])
+            if len(curves) != len(labels) or any(curve.get('data') and curve['data'] != labels[i] for i, curve in enumerate(curves)):
+                raise ValueError('A saved fit does not match the current correlation curves.')
+            flags = []
+            initials = []
+            for curve in curves:
+                indices = curve.get('paramidx', model['used'])
+                vector = curve.get('startvalues', [])
+                fitarray = curve.get('fitarray', [])
+                if len(indices) != len(model['params']) or len(fitarray) <= max(indices, default=-1):
+                    raise ValueError('A saved fit lacks its parameter or checkbox settings.')
+                values_for_curve = []
+                for pos, name in enumerate(model['params']):
+                    value = (curve.get('parameters') or {}).get(name)
+                    if value is None and indices[pos] < len(vector): value = vector[indices[pos]]
+                    if value is None or not math.isfinite(float(value)):
+                        raise ValueError('A saved fit is missing a finite parameter value.')
+                    values_for_curve.append(float(value))
+                initials.append(values_for_curve)
+                flags.append(([bool(fitarray[index]) for index in indices], bool(fitarray[-1])))
+            if any(flag != flags[0] for flag in flags[1:]):
+                raise ValueError('Fit checkbox or weighting settings differ across curves; refit manually first.')
+            multiple = len(curves) > 1
+            fit_payload = {'model': key, 'tau_s': result['tau_s'], 'g': result['g'],
+                'data': labels if multiple else labels[0], 'initial': initials if multiple else initials[0],
+                'fittable': flags[0][0], 'weighted': flags[0][1],
+                'start': first.get('start', first.get('fitrange', [1, 0])[0]),
+                'stop': first.get('stop', first.get('fitrange', [1, 0])[1])}
+            if fit_payload['weighted']:
+                weights, _ = _browser_weighted_fit_values(ffs_file, result, fit_payload)
+                fit_payload['weights'] = weights if multiple else weights[0]
+            new_record = json.loads(fit_browser_model(json.dumps(fit_payload)))
+            for old_curve, new_curve in zip(curves, _browser_fit_curves(new_record)):
+                for name in ('w0', 'D'):
+                    if name in old_curve: new_curve[name] = old_curve[name]
+            updated.append(new_record)
+    except Exception as error:
+        # Never leave stale fits attached to a newly changed average.
+        ffs_file.browser_active_chunks = list(previous_active)
+        response = json.loads(show_chunks_corr_change(average_payload))
+        response['message'] = 'Chunk change was reverted because the fits could not be recalculated: ' + str(error)
+        current_fit = getattr(ffs_file, 'browser_fit', None)
+        if current_fit is not None: response['fit'] = current_fit
+        response['show_chunks_mode'] = 'average'
+        response['view'] = _browser_view()
+        return json.dumps(response, allow_nan=False, default=_browser_json_default)
+    analysis.browser_fits = updated
+    index = getattr(ffs_file, 'browser_active_fit_index', None)
+    if index is None: index = getattr(analysis, 'active_fit', None)
+    if index is not None and 0 <= int(index) < len(updated):
+        index = int(index)
+        analysis.active_fit = index
+        ffs_file.browser_active_fit_index = index
+        analysis.browser_fit = ffs_file.browser_fit = updated[index]
+        response['fit'] = updated[index]
+    response['message'] = (message or 'Updated chunk selection.') + ' Recalculated ' + str(len(updated)) + ' fit(s).'
+    response['show_chunks_mode'] = 'average'
+    response['clear_diffusion_law'] = True
+    response['view'] = _browser_view()
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
+
+
 def _browser_fit_current(values, replace=False):
     ffs_file = _browser_current_file()
     result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
@@ -5571,13 +5765,18 @@ def _browser_fit_current(values, replace=False):
     analysis = _browser_active_analysis(ffs_file)
     if analysis is not None:
         fit_records = list(getattr(analysis, "browser_fits", []))
-        if replace and fit_records:
-            fit_records[-1] = fit
+        selected_fit = getattr(ffs_file, 'browser_active_fit_index', None)
+        if selected_fit is None:
+            selected_fit = getattr(analysis, 'active_fit', None)
+        if replace and fit_records and selected_fit is not None and 0 <= int(selected_fit) < len(fit_records):
+            fit_index = int(selected_fit)
+            fit_records[fit_index] = fit
         else:
             fit_records.append(fit)
+            fit_index = len(fit_records) - 1
         analysis.browser_fits = fit_records
         analysis.browser_fit = fit
-        analysis.active_fit = len(fit_records) - 1
+        analysis.active_fit = fit_index
         ffs_file.browser_active_fit_index = analysis.active_fit
     curves = _browser_fit_curves(fit)
     first = curves[0]["parameters"]
@@ -5940,6 +6139,7 @@ def browser_action_catalog():
       let correlationWorkerBooted = false;
       let correlationWorkerStage = "starting";
       let correlationJob = null;
+      let correlationPending = false;
       let startupPreviewData = null;
       let lastDrawnPreview = null;
       let hoveredDetector = null;
@@ -5952,17 +6152,17 @@ def browser_action_catalog():
         "Starting browser Python",
         "Loading NumPy, H5Py, and micropip",
         "Importing micropip",
-        "Installing multipletau",
-        "Installing matplotlib",
-        "Installing scipy",
-        "Installing tifffile",
-        "Installing ptufile",
-        "Installing ome-types",
-        "Installing phconvert",
-        "Installing seaborn",
-        "Installing pydantic",
-        "Installing czifile",
-        "Installing BrightEyes-FFS",
+        "Loading multipletau",
+        "Loading matplotlib",
+        "Loading scipy",
+        "Loading tifffile",
+        "Loading ptufile",
+        "Loading ome-types",
+        "Loading phconvert",
+        "Loading seaborn",
+        "Loading pydantic",
+        "Loading czifile",
+        "Loading BrightEyes-FFS",
         "Checking TCSPC reader and correlation modules",
         "Preparing Python handlers"
       ];
@@ -6213,7 +6413,7 @@ def browser_action_catalog():
             if (ready) return ready;
             ready = (async function () {
               postMessage({ type: "progress", message: "Starting background Python worker…" });
-              importScripts(config.pyodideScript);
+              // Pyodide's bootstrap is prepended to this worker by the page.
               postMessage({ type: "progress", message: "Loading Python in background worker…" });
               pyodide = await loadPyodide({ indexURL: config.pyodideIndex });
               postMessage({ type: "progress", message: "Loading NumPy and H5Py in background worker…" });
@@ -6221,11 +6421,12 @@ def browser_action_catalog():
               await pyodide.runPythonAsync("import micropip");
               await pyodide.runPythonAsync("micropip.add_mock_package('tables', '5.15.0')");
               for (const packageName of config.packages) {
-                postMessage({ type: "progress", message: "Installing " + packageName + " in background worker…" });
+                postMessage({ type: "progress", message: "Loading " + packageName + " in background worker…" });
                 await pyodide.runPythonAsync("await micropip.install(" + JSON.stringify(packageName) + ", deps=True)");
               }
-              postMessage({ type: "progress", message: "Installing BrightEyes-FFS in background worker…" });
-              await pyodide.runPythonAsync("await micropip.install('brighteyes-ffs', deps=False, keep_going=True)");
+              postMessage({ type: "progress", message: "Loading BrightEyes-FFS in background worker…" });
+              pyodide.globals.set('worker_package_spec', config.packageSpec);
+              await pyodide.runPythonAsync("await micropip.install(worker_package_spec, deps=False, keep_going=True)");
               await pyodide.runPythonAsync("import ptufile\\nfrom brighteyes_ffs.fcs.atimes_data import load_atimes_data\\nfrom brighteyes_ffs.fcs.atimes2corrparallel import atimes_file_2_corr");
               await pyodide.runPythonAsync(config.helpers);
               postMessage({ type: "ready" });
@@ -6250,18 +6451,16 @@ def browser_action_catalog():
             try {
               await boot(message.config);
               if (message.type !== "calculate") return;
-              const path = "/worker/input_" + Date.now() + ".h5";
+              const suffix = /\\.ptu$/i.test(message.job.input_path) ? ".ptu" : ".h5";
+              const path = "/worker/input_" + Date.now() + suffix;
               await copyFile(message.file, path);
               postMessage({ type: "progress", message: "Calculating correlation in background…" });
               pyodide.globals.set("worker_job_json", JSON.stringify(message.job));
               pyodide.globals.set("worker_input_path", path);
-              const result = await pyodide.runPythonAsync(
-                "worker_job = json.loads(worker_job_json)\\n" +
-                "worker_values = worker_job['values']\\n" +
-                "calculate_correlation(worker_input_path, worker_job['dataset_path'], worker_values.get('algorithm', 'multipletau'), worker_job['dwell_us'], worker_values.get('correlationType', 'sv_fcs'), worker_values.get('signalA', 'central'), worker_values.get('signalB', 'single'), worker_values.get('customA', '12'), worker_values.get('customB', '13'), _browser_int(worker_values.get('lagInput'), 16), _browser_number(worker_values.get('chunkSizeInput'), 1.0), worker_job.get('active_chunks'))"
-              );
-              try { pyodide.FS.unlink(path); } catch (_) {}
-              postMessage({ type: "result", result: String(result) });
+              try {
+                const result = await pyodide.runPythonAsync("browser_worker_calculate(worker_job_json, worker_input_path)");
+                postMessage({ type: "result", result: String(result) });
+              } finally { try { pyodide.FS.unlink(path); } catch (_) {} }
             } catch (error) {
               postMessage({ type: "error", error: error && (error.message || String(error)) });
             }
@@ -6273,9 +6472,21 @@ def browser_action_catalog():
         if (correlationWorkerReady) return correlationWorkerReady;
         correlationWorkerBooted = false;
         correlationWorkerStage = "starting the background worker";
-        // A same-origin script is used instead of a Blob URL: the embedded
-        // preview's security policy blocks Blob workers before they can start.
-        correlationWorker = new Worker("web_ffs_worker.js");
+        // Fetch the same Pyodide bootstrap that successfully loaded the page,
+        // then embed it in the worker. Some browsers reject cross-origin
+        // importScripts() from a Blob worker even though the page loaded it.
+        let bootstrap;
+        try {
+          const response = await fetch(PYODIDE_SCRIPT, { mode: 'cors' });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          bootstrap = await response.text();
+        } catch (error) {
+          throw new Error('Could not retrieve the Pyodide worker bootstrap: ' + describeError(error));
+        }
+        const workerUrl = URL.createObjectURL(new Blob([bootstrap, '\n;\n', workerSource()], {type: 'text/javascript'}));
+        try { correlationWorker = new Worker(workerUrl); }
+        catch (error) { throw new Error('Could not start the background worker. The browser or embedding page may block inline workers: ' + describeError(error)); }
+        finally { URL.revokeObjectURL(workerUrl); }
         correlationWorkerReady = new Promise(function (resolve, reject) {
           correlationWorker.onmessage = async function (event) {
             const message = event.data;
@@ -6321,25 +6532,33 @@ def browser_action_catalog():
           pyodideScript: PYODIDE_SCRIPT, pyodideIndex: PYODIDE_INDEX, helpers: PYTHON_HELPERS,
           // The worker needs only correlation and fitting dependencies.  Image
           // readers and plotting packages remain in the main-page runtime.
-          packages: ["multipletau", "scipy", "ptufile"]
+          packages: ["multipletau", "matplotlib", "scipy", "tifffile", "ptufile", "ome-types", "phconvert", "seaborn", "pydantic", "czifile"],
+          packageSpec: 'brighteyes-ffs==' + String(await pyodide.runPythonAsync("__import__('importlib.metadata', fromlist=['version']).version('brighteyes-ffs')"))
         };
         correlationWorker.postMessage({ type: "boot", config: config });
         return correlationWorkerReady;
       }
 
       async function calculateInWorker(payload) {
-        if (correlationJob) throw new Error("A correlation calculation is already running.");
-        const file = h5FilesByTab.get(activeFileKey());
-        if (!file) throw new Error("Reload this H5 file before calculating in the background worker.");
+        if (correlationPending) throw new Error("A correlation calculation is already running.");
+        correlationPending = true;
+        try {
         setStatus("starting", "Preparing background correlation worker…");
         const settings = await callPython("browser_prepare_worker_calculation(worker_payload_json)", {
           worker_payload_json: JSON.stringify(payload)
         });
+        let file = h5FilesByTab.get(String(settings.image_index) + ':' + String(settings.file_index));
+        if (!file || /\.(bin|mat)$/i.test(file.name || '')) {
+          // Converted files exist only in the main runtime's virtual filesystem.
+          const bytes = pyodide.FS.readFile(settings.input_path);
+          file = new Blob([bytes], {type: 'application/octet-stream'});
+        }
         await ensureCorrelationWorker();
-        return new Promise(function (resolve, reject) {
+        return await new Promise(function (resolve, reject) {
           correlationJob = { settings: settings, resolve: resolve, reject: reject };
           correlationWorker.postMessage({ type: "calculate", file: file, job: settings });
         });
+        } finally { correlationPending = false; }
       }
 
       function requestDownload(download) {
@@ -6392,7 +6611,9 @@ def browser_action_catalog():
         };
         target.textContent = [format(columns), format(widths.map(function (width) { return "─".repeat(width); }))]
           .concat(rows.map(format)).join("\n");
-        label.textContent = "First " + rows.length + " row" + (rows.length === 1 ? "" : "s") + " (of " + (preview.limit || rows.length) + ")";
+        const totalRows = preview.total_rows;
+        label.textContent = "First " + rows.length + " row" + (rows.length === 1 ? "" : "s") +
+          (totalRows !== null && totalRows !== undefined ? " (of " + Number(totalRows).toLocaleString() + ")" : "");
         label.hidden = false; target.hidden = false;
       }
 
@@ -6709,6 +6930,14 @@ def browser_action_catalog():
         byId("crossCustomAveraging").hidden = !isCross || byId("crossAveraging").value !== "custom";
       }
 
+      function updateAnalysisRemoveButton() {
+        const select = byId('analysisSelect');
+        const button = byId('removeSelectedAnalysis');
+        const fit = select.value.startsWith('fit:');
+        button.hidden = select.disabled || !/^(fit|corr):/.test(select.value);
+        button.textContent = fit ? 'Remove current fit' : 'Remove current correlation';
+      }
+
       function renderView(view) {
         if (!view) return;
         activeView = view;
@@ -6814,6 +7043,7 @@ def browser_action_catalog():
             });
             analysisSelect.disabled = false;
           }
+          updateAnalysisRemoveButton();
         }
         byId("notesInput").value = view.notes || "";
         renderImage(view);
@@ -7408,6 +7638,10 @@ def browser_action_catalog():
 
       function applyResponse(response) {
         if (!response) return;
+        if (response.clear_diffusion_law) {
+          lastDiffusionLaw = null;
+          byId("diffusionPlotWrap").hidden = true;
+        }
         renderView(response.view);
         if (response.error) {
           setStatus("error", response.error.detail || response.message || "The requested operation failed.");
@@ -7551,7 +7785,10 @@ def browser_action_catalog():
               button_data: Object.assign({}, button.dataset),
               values: formValues()
             };
+            const showCorrelationWait = handlerName === 'add_corr_and_calc' &&
+              activeView && activeView.active_file && activeView.active_file.raw_available;
             try {
+            if (showCorrelationWait) byId('correlationWaitOverlay').classList.remove('is-hidden');
             setStatus("starting", "Running Python handler: " + handlerName + "…");
             await waitForBusyPaint();
             if (handlerName === "export_session_xlsx" || handlerName === "export_corr_xlsx") {
@@ -7569,6 +7806,8 @@ def browser_action_catalog():
             applyResponse(await dispatchPythonHandler(handlerName, payload));
           } catch (error) {
               setStatus("error", "Python handler failed: " + describeError(error));
+          } finally {
+              if (showCorrelationWait) byId('correlationWaitOverlay').classList.add('is-hidden');
           }
           }, true);
         });
@@ -7840,6 +8079,7 @@ def browser_action_catalog():
           redrawCorrelation();
         });
         byId("analysisSelect").addEventListener("change", async function () {
+          updateAnalysisRemoveButton();
           try {
             setStatus("starting", "Showing selected correlation…");
             applyResponse(await dispatchPythonHandler("show_analysis", {
@@ -7850,6 +8090,20 @@ def browser_action_catalog():
             }));
           } catch (error) {
             setStatus("error", "Could not show the selected correlation: " + describeError(error));
+          }
+        });
+        byId('removeSelectedAnalysis').addEventListener('click', async function () {
+          const selection = byId('analysisSelect').value;
+          const isFit = selection.startsWith('fit:');
+          if (!/^(fit|corr):/.test(selection)) return;
+          if (!window.confirm(isFit ? 'Remove the selected fit?' : 'Remove the selected correlation and all its fits?')) return;
+          try {
+            setStatus('starting', isFit ? 'Removing fit…' : 'Removing correlation…');
+            const values = formValues();
+            values.analysisSelect = selection;
+            applyResponse(await dispatchPythonHandler(isFit ? 'remove_current_fit' : 'remove_current_analysis', {values: values}));
+          } catch (error) {
+            setStatus('error', 'Could not remove the selection: ' + describeError(error));
           }
         });
         fileInput.addEventListener("change", async function () {
@@ -8099,14 +8353,14 @@ def browser_action_catalog():
             "multipletau", "matplotlib", "scipy", "tifffile", "ptufile",
             "ome-types", "phconvert", "seaborn", "pydantic", "czifile"
           ]) {
-            setStatus("starting", "Installing " + packageName + "…");
+            setStatus("starting", "Loading " + packageName + "…");
             await pyodide.runPythonAsync("await micropip.install(" + JSON.stringify(packageName) + ", deps=True)");
           }
-          setStatus("starting", "Installing BrightEyes-FFS…");
+          setStatus("starting", "Loading BrightEyes-FFS…");
           await pyodide.runPythonAsync("await micropip.install('brighteyes-ffs', deps=False, keep_going=True)");
           const packageVersion = await pyodide.runPythonAsync("from importlib.metadata import version\nversion('brighteyes-ffs')");
           byId("packageVersion").textContent = "v" + packageVersion;
-          setStatus("starting", "BrightEyes-FFS v" + packageVersion + " installed; checking modules…");
+          setStatus("starting", "BrightEyes-FFS v" + packageVersion + " loaded; checking modules…");
           setStatus("starting", "Checking TCSPC reader and correlation modules…");
           await pyodide.runPythonAsync(
             "import ptufile\n" +
