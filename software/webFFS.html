@@ -443,6 +443,9 @@
     .right-sidebar .tool-button { min-height: 31px; padding: 6px 8px; font-size: .71rem; }
     .calculate-panel select, .calculate-panel input[type="number"] { font-weight: 400; }
     .calculate-panel #calculateButton { font-weight: 400; color: #164b50; background: #d8eeee; border-color: #9bc6c8; }
+    #newFitButton { font-weight: 400; color: #164b50; background: #d8eeee; border-color: #9bc6c8; }
+    #fitModel, #fitStart, #fitStop, #fitUseView, button[data-python-handler="overwritefit"] { font-weight: 400; }
+    #diffusionLawUpdate, #diameterUpdate { font-weight: 400; color: #164b50; background: #d8eeee; border-color: #9bc6c8; }
     html[data-theme="light"] .calculate-panel #calculateButton { color: #164b50; background: #d8eeee; }
 
     .legacy-data-panel { display: none; }
@@ -547,6 +550,11 @@
     }
 
     .control-grid .wide { grid-column: 1 / -1; }
+    .diffusion-row-button { align-self: end; }
+    .diffusion-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; }
+    .diffusion-fields label { margin: 0; }
+    .diffusion-fields input, .diffusion-fields select { min-width: 0; }
+    #pchBinControl[hidden], #correlationPrecisionControl[hidden] { display: none; }
     .fit-range-row { display: flex; align-items: end; gap: 8px; margin-top: 11px; }
     .fit-range-row label { flex: 0 1 90px; min-width: 0; }
     .fit-range-row input { width: 100%; }
@@ -1660,6 +1668,7 @@
                   <option value="multipletau">Multipletau</option>
 				  <option value="wiener-khinchin">Wiener-Khinchin</option>
 				  <option value="tt2corr">Time-tag-to-corr</option>
+				  <option value="pch">Photon counting histogram</option>
 				</select></label>
 
 				<label>
@@ -1667,10 +1676,11 @@
                   <input id="chunkSizeInput" name="chunkSize" type="number" min="0" step="any" value="1" placeholder="e.g. 10">
                 </label>
 
-				<label>
+				<label id="correlationPrecisionControl">
                   <span>Precision</span>
                   <input id="lagInput" type="number" min="8" max="400" step="1" value="16">
                 </label>
+                <label id="pchBinControl" hidden><span>Histogram bin width (µs)</span><input id="pchBinInput" type="number" min="1" step="1" value="10"></label>
 
                 <label>
                   <span>Dwell time per row (µs)</span>
@@ -1720,21 +1730,24 @@
           <div id="fitParameterFields" class="fit-parameter-list"></div>
           <label class="check-label" title="Weight correlation points using variation between enabled chunks"><input id="fitWeighted" type="checkbox"><span>Weighted fit</span></label>
           <p id="fitSummary" class="timing-note" hidden></p>
-          <div class="placeholder-actions"><button class="tool-button" type="button" data-python-handler="overwritefit">Overwrite fit</button><button class="tool-button" type="button" data-python-handler="newfit">New fit</button></div>
+          <div class="placeholder-actions"><button class="tool-button" type="button" data-python-handler="overwritefit">Overwrite fit</button><button id="newFitButton" class="tool-button" type="button" data-python-handler="newfit">New fit</button></div>
         </div>
       </section>
       <section class="panel" aria-labelledby="diffusionControlsHeading">
         <div class="panel-heading"><h2 id="diffusionControlsHeading">Diffusion analysis</h2></div>
         <div class="panel-body">
-          <div class="control-grid">
-            <label><span>Keep fixed</span><select id="keepFixedInput"><option>Keep w0 fixed</option><option>Keep D fixed</option></select></label>
-            <label><span>Beam waist (nm)</span><input id="beamWaistInput" type="text" value="250, 300, 350"></label>
-            <label><span>Diffusion coefficient (µm²/s)</span><input id="diffusionCoefficientInput" type="text" value="1"></label>
-            <label><span>Diameter (nm)</span><input id="diameterInput" type="text" value="10, 10, 10"></label>
-            <label><span>Calculate</span><select id="diameterCalculationInput"><option>Calculate diameter</option><option>Calculate viscosity</option><option>Calculate temperature</option></select></label>
+          <div class="diffusion-fields">
+            <label for="beamWaistInput">Beam waist (nm)</label><input id="beamWaistInput" type="text" value="250, 300, 350">
+            <label for="diffusionCoefficientInput">D (µm²/s)</label><input id="diffusionCoefficientInput" type="text" value="1">
+            <select id="keepFixedInput" aria-label="Fixed diffusion parameter"><option>Keep D fixed</option><option>Keep w0 fixed</option></select>
+            <button id="diffusionLawUpdate" class="tool-button" type="button" data-python-handler="update_diffLaw">Update</button>
+            <label for="temperatureInput">Temperature (K)</label><input id="temperatureInput" type="text" value="293">
+            <label for="viscosityInput">Viscosity (Pa.s)</label><input id="viscosityInput" type="text" value="0.001">
+            <label for="diameterInput">Diameter (nm)</label><input id="diameterInput" type="text" value="10, 10, 10">
+            <select id="diameterCalculationInput" aria-label="Calculate diffusion property"><option>Calculate diameter</option><option>Calculate viscosity</option><option selected>Calculate temperature</option></select>
+            <button id="diameterUpdate" class="tool-button" type="button" data-python-handler="update_difflaw_diameter">Update</button>
           </div>
           <p id="diffusionSummary" class="timing-note">Fit a correlation to calculate a diffusion estimate.</p>
-          <div class="placeholder-actions"><button class="tool-button" type="button" data-python-handler="update_diffLaw">Update diffusion law</button><button class="tool-button" type="button" data-python-handler="update_difflaw_diameter">Update diameter</button></div>
         </div>
       </section>
     </section>
@@ -2761,6 +2774,47 @@ def _tcspc_rows_preview(input_path, channel, maximum_rows=12):
     return _format_browser_rows(columns[:arrivals.shape[1]], arrivals, maximum_rows, total_rows)
 
 
+def calculate_pch_native(input_path, values, data_kind, metadata=None, split=None):
+    """Use the same PCH entry points and bin-width units as the desktop."""
+    if values.get('correlationType', 'sv_fcs') != 'sv_fcs':
+        raise ValueError('Photon counting histograms currently require the spot-variation detector sums.')
+    bin_us = _browser_number(values.get('pchBinInput'))
+    if bin_us is None or bin_us <= 0 or not float(bin_us).is_integer():
+        raise ValueError('Enter a positive whole-number histogram bin width in µs.')
+    list_of_g, elements, average = _desktop_correlation_request(values)
+    chunk_s = split if split is not None else _browser_number(values.get('chunkSizeInput'), 1.0)
+    if data_kind == 'tcspc':
+        from brighteyes_ffs.pch.atimes2pch import atimes_file_2_pch
+        corrs, _ = atimes_file_2_pch(input_path, list_of_pch=list_of_g, split=chunk_s,
+            bin_time=bin_us * 1e-6, normalize=True, time_trace=True,
+            list_of_pch_out=elements, sysclk_MHz=240, perform_calib=False, max_k=30)
+    else:
+        from brighteyes_ffs.fcs.fcs2corr import fcs_load_and_corr_split
+        dwell_us = _browser_number(values.get('dwellInput'), _browser_number(getattr(metadata, 'time_resolution', None)))
+        if dwell_us is None or dwell_us <= 0:
+            raise ValueError('A positive dwell time per row is required to calculate the histogram.')
+        bins_per_histogram_bin = bin_us / dwell_us
+        rounded_bins = round(bins_per_histogram_bin)
+        if rounded_bins < 1 or not math.isclose(bins_per_histogram_bin, rounded_bins, rel_tol=1e-9, abs_tol=1e-9):
+            raise ValueError('The histogram bin width must be a positive integer multiple of the dwell time per row.')
+        from copy import copy
+        effective_metadata = copy(metadata)
+        effective_metadata.time_resolution = dwell_us
+        if hasattr(effective_metadata, 'timeResolution'):
+            effective_metadata.timeResolution = dwell_us
+        rows = _browser_int(getattr(effective_metadata, 'num_datapoints', 0), 0)
+        if rows > 0:
+            effective_metadata.duration = rows * dwell_us * 1e-6
+        # fcs2corr's binsize is a count of source samples, not microseconds.
+        corrs, _ = fcs_load_and_corr_split(input_path, list_of_g=list_of_g, accuracy=30,
+            binsize=int(rounded_bins), split=chunk_s, time_trace=True, metadata=effective_metadata,
+            list_of_g_out=elements, algorithm='pch')
+    result = _native_correlations_to_result(corrs, 'Photon counting histogram')
+    result['plot_type'] = 'pch'
+    result['bin_width_us'] = bin_us
+    return result, corrs
+
+
 def calculate_time_trace_native(input_path, values, metadata=None, split=None):
     """Desktop-style binned-count route: ``fcs_load_and_corr_split``."""
     from brighteyes_ffs.fcs.fcs2corr import fcs_load_and_corr_split
@@ -3364,8 +3418,17 @@ _FIT_MODELS = {
     "pair-correlation": _fit_model("Free diffusion pair-correlation", ["N", "D (um^2/s)", "Beam waist (nm)", "Shape parameter", "rho (nm)", "Offset"], [1,1,600,3,150,0], [1]*6, [1,1e-12,1e-9,1,1e-9,1], [1e-3,1e-3,1,.1,0,0,-1e6,-1e6,-1e6], [1e6,1e4,1e6,1e6,1e6,1e6,1e6,1e6,1e6], [-1,-1,-1,-1,-1,0,-1,0,0], [0,1,2,3,4,6], "brighteyes_ffs.fcs.fcs_analytical", "fcs_dualfocus"),
     "circular-scan": _fit_model("Free diffusion circular scanning", ["N", "Tau (ms)", "Beam waist (nm)", "Shape parameter", "Circle radius (nm)", "Circle period (µs)", "Offset/1000"], [1,1,600,3,500,320,0], [1]*7, [1,1e-3,1e-9,1,1e-9,1e-6,1], [0,1e-9,0,0,0,0,-1e6,0,0], [1e10,1e10,1e10,100,1e10,1e10,1e10,1e10,1e10], [-1,-1,-1,-1,-1,-1,-1,0,0], [0,1,2,3,5,4,6], "brighteyes_ffs.fcs.fcs_analytical", "fcs_circular_scanning"),
     "nanosecond": _fit_model("Nanosecond FCS", ["A", "A antibunching", "tau antibunching (us)", "A conformational", "tau conform. (us)", "A rotational", "tau rot. (us)", "A triplet", "tau triplet (us)", "tau D (ms)", "SP"], [1,1,10,1,50,1,100,1,200,1,3], [1]*11, [1,1,1e-6,1,1e-6,1,1e-6,1,1e-6,1e-3,1], [0,0,1e-5,0,1e-5,0,1e-5,0,1e-5,1e-5,1e-6], [1e6]*11, [-1]*11, list(range(11)), "brighteyes_ffs.fcs.fcs_analytical", "nanosecond_fcs_analytical"),
-    "afterpulsing": _fit_model("2 components with afterpulsing", ["N", "Tau 1 (ms)", "Tau 2 (ms)", "Fraction species 1", "Rel.brightness 1", "Triplet fraction", "Triplet time (µs)", "Shape parameter", "Offset", "A", "B"], [1,.1,1,.5,1,.1,10,3,0,1,1], [1]*11, [1,1e-3,1e-3,1,1,1,1e-6,1,1,1,1], [0,1e-3,5e-2,0,0,0,0,0,-1e2,0,0], [1e6,1000,1000,1,1e6,1e6,1e6,1e6,1e6,1e6,1e6], [-1]*11, list(range(11)), "brighteyes_ffs.fcs.fcs_analytical", "fcs_2c_analytical"),
+    "afterpulsing": _fit_model("2 components with afterpulsing", ["N", "Tau 1 (ms)", "Tau 2 (ms)", "Fraction species 1", "Rel.brightness 1", "Triplet fraction", "Triplet time (µs)", "Shape parameter", "Offset", "A", "B"], [1,.1,1,.5,1,.1,10,3,0,1,1], [1]*11, [1,1e-3,1e-3,1,1,1,1e-6,1,1,1,1], [0,1e-3,5e-2,0,0,0,0,0,-1e2,-1e6,-1e6], [1e6,1000,1000,1,1e6,1e6,1e6,1e6,1e6,1e6,1e6], [-1]*11, list(range(11)), "brighteyes_ffs.fcs.fcs_analytical", "fcs_2c_analytical"),
 }
+
+# PCH definitions mirror the desktop model descriptors, including the hidden
+# voxel-volume parameter and the trailing PSF settings.
+_PCH_COMMON = 'brighteyes_ffs.pch.pch_fit'
+_FIT_MODELS.update({
+    'pch-1': _fit_model('PCH 1 component', ['Conc. (/um^3)', 'Brightness (kHz)', 'Bin time (ms)', 'w0 (nm)', 'z0/w0', 'N bins'], [1,1,1,300,3,1e4], [1,1,0,0,0,0], [1]*6, [1e-12]*6+[10], [1e12]*7, [-1,-1,-1,2e-6,-1,-1,-1], [0,1,2,4,5,6], _PCH_COMMON, 'fitfun_pch'),
+    'pch-2': _fit_model('PCH 2 components', ['Conc. 1 (/um^3)', 'Conc. 2 (/um^3)', 'Brightness 1 (kHz)', 'Brightness 2 (kHz)', 'Dark count rate (kHz)', 'Bin time (ms)', 'w0 (nm)', 'z0/w0', 'N bins'], [1,1,1,1,0,.01,300,3,1e4], [1,1,1,1,1,0,0,0,0], [1]*9, [1e-12]*4+[0]+[1e-12]*4+[10], [1e12]*4+[1e5]+[1e12]*5, [-1,-1,-1,-1,-1,-1,2e-6,-1,-1,-1], [0,1,2,3,4,5,7,8,9], _PCH_COMMON, 'fitfun_pch_nc'),
+    'pch-2-global': _fit_model('PCH 2 components - global fit', ['Conc. 1 (/um^3)', 'Conc. 2 (/um^3)', 'Brightness 1 (kHz)', 'Brightness 2 (kHz)', 'Dark count rate (kHz)', 'Bin time (ms)', 'w0 (nm)', 'z0/w0', 'N bins'], [1,1,1,1,0,.01,300,3,1e4], [1,1,1,1,1,0,0,0,0], [1]*9, [1e-12]*4+[0]+[1e-12]*4+[10], [1e12]*4+[1e5]+[1e12]*5, [-1,-1,-1,-1,-1,-1,2e-6,-1,-1,-1], [0,1,2,3,4,5,7,8,9], _PCH_COMMON, 'fitfun_pch_nc_global', True),
+})
 
 
 def _fit_visible_bounds(model):
@@ -3405,6 +3468,7 @@ def browser_fit_model_catalog():
             "fitfunctionModule": value["module"],
             "fitfunctionName": value["function"],
             "global_fit": value["global_fit"],
+            "plot_type": "pch" if key.startswith('pch-') else "correlation",
         }
     return json.dumps(catalog, allow_nan=False)
 
@@ -3610,9 +3674,90 @@ def _fit_browser_model_global(payload):
                        'global_param': global_mask.astype(int).tolist(), 'fits': fits})
 
 
+def _fit_browser_pch(payload):
+    """Call the desktop PCH fitter and retain its native parameter layout."""
+    from brighteyes_ffs.pch.pch_fit import fit_pch
+    model = _FIT_MODELS[payload['model']]
+    xs, ys = payload['tau_s'], payload['g']
+    multiple = bool(xs and isinstance(xs[0], list))
+    xs, ys = (xs, ys) if multiple else ([xs], [ys])
+    if model['global_fit'] and len(xs) < 2:
+        raise ValueError('A global PCH fit requires at least two histograms.')
+    stop_requested = int(payload.get('stop', 0))
+    stop = min(map(len, ys)) if stop_requested <= 0 else min(stop_requested, *map(len, ys))
+    if stop < 2 or any(not np.array_equal(np.asarray(x[:stop]), np.arange(stop)) for x in xs):
+        raise ValueError('PCH fitting requires consecutive count bins starting at zero.')
+    hist = np.asarray([y[:stop] for y in ys], dtype=float).T
+    if not np.all(np.isfinite(hist)) or np.any(hist < 0) or np.any(np.sum(hist, axis=0) <= 0):
+        raise ValueError('PCH data must be finite, non-negative and non-empty.')
+    initial = payload.get('initial', model['defaults'])
+    initials = initial if multiple and initial and isinstance(initial[0], list) else [initial] * len(xs)
+    flags = np.asarray(payload.get('fittable', []), dtype=bool) & np.asarray(model['fittable'], dtype=bool)
+    if not np.any(flags):
+        raise ValueError('Select at least one parameter to fit.')
+    nparam = len(model['all_defaults']) - 3
+    indices = np.asarray(model['used'], dtype=int)
+    full = np.tile(np.asarray(model['all_defaults'], dtype=float)[:, None], (1, len(xs)))
+    full[indices, :] = np.asarray(initials, dtype=float).T
+    fitflags = np.zeros(len(full), dtype=int); fitflags[indices] = flags
+    lower, upper = np.asarray(model['lower'], dtype=float), np.asarray(model['upper'], dtype=float)
+    for index in np.flatnonzero(fitflags):
+        full[index] = np.clip(full[index], np.nextafter(lower[index], np.inf), np.nextafter(upper[index], -np.inf))
+    if np.any(full[-3:] <= 0) or np.any(full[-1] != np.floor(full[-1])):
+        raise ValueError('PSF dimensions and N bins must be positive; N bins must be an integer.')
+    if model['global_fit'] and np.any(full[-1] != full[-1, 0]):
+        raise ValueError('A global PCH fit requires the same N bins for each curve.')
+    if payload.get('weighted') and model['global_fit']:
+        raise ValueError('The desktop global PCH fit uses unweighted fitting; turn off weighted fit.')
+    fitted, residuals = [], []
+    if model['global_fit']:
+        psf = full[-3:-1, :].T.ravel().tolist()
+        global_flags = [True, True, False, False, False, True, False]
+        outcome = fit_pch(hist.copy(), fitflags[:nparam].copy(), full[:nparam].copy(), psf,
+                          lower[:nparam].copy(), upper[:nparam].copy(), n_bins=int(full[-1, 0]),
+                          global_param=global_flags, fitfun=model['function'], minimization='relative')
+        full[:nparam] = outcome.x
+        fitted = [full[:, i].copy() for i in range(len(xs))]
+        residuals = [np.asarray(outcome.fun)[:, i] for i in range(len(xs))]
+    else:
+        for i in range(len(xs)):
+            weights = payload.get('weights')
+            if weights is not None:
+                weights = weights[i] if multiple else weights
+                weights = np.asarray(weights[:stop], dtype=float)
+            else:
+                weights = 1
+            outcome = fit_pch(hist[:, i].copy(), fitflags[:nparam].copy(), full[:nparam, i].copy(),
+                              full[-3:-1, i].tolist(), lower[:nparam].copy(), upper[:nparam].copy(),
+                              weights=weights, n_bins=int(full[-1, i]), fitfun=model['function'], minimization='relative')
+            full[:nparam, i] = outcome.x
+            fitted.append(full[:, i].copy()); residuals.append(np.asarray(outcome.fun))
+    records = []
+    labels = payload.get('data', [])
+    for i, (vector, residual) in enumerate(zip(fitted, residuals)):
+        observed = hist[:, i]
+        # Relative fitting deliberately ignores zero-frequency bins; there is
+        # no meaningful fitted value recoverable from those residuals.
+        curve = [float(observed[j] - residual[j]) if observed[j] > 0 else None for j in range(stop)] + [None] * (len(xs[i]) - stop)
+        label = labels[i] if isinstance(labels, list) else labels
+        records.append({'model': model['label'], 'model_key': payload['model'], 'data': str(label or ''),
+            'parameters': {name: float(vector[idx]) for name, idx in zip(model['params'], indices)},
+            'parameter_names': model['params'], 'startvalues': vector.tolist(),
+            'fitarray': fitflags.tolist() + [int(bool(payload.get('weighted')))],
+            'minbound': lower.tolist(), 'maxbound': upper.tolist(), 'param_factors10': [1] * len(vector),
+            'paramidx': indices.tolist(), 'fitresult': residual.tolist(), 'residuals': residual.tolist(),
+            'curve': curve, 'curve_full': curve, 'start': 0, 'stop': stop, 'fitrange': [0, stop],
+            'tauD_s': None, 'rmse': float(np.sqrt(np.mean(residual ** 2)))})
+    if multiple:
+        return json.dumps({'model': model['label'], 'model_key': payload['model'], 'global_fit': model['global_fit'], 'fits': records}, allow_nan=False)
+    return json.dumps(records[0], allow_nan=False)
+
+
 def fit_browser_model(payload_json):
     payload = json.loads(payload_json)
     model = _FIT_MODELS[str(payload.get('model') or 'free-diffusion-1')]
+    if str(payload.get('model', '')).startswith('pch-'):
+        return _fit_browser_pch(payload)
     if model['global_fit']:
         return _fit_browser_model_global(payload)
     taus, values = payload.get("tau_s", []), payload.get("g", [])
@@ -4057,7 +4202,7 @@ def _browser_fit_payload(values, result):
         "weighted": bool(values.get('fitWeighted', False)),
         "data": result.get("trace_labels", [""]) if number_of_curves > 1 else (result.get("trace_labels") or [""])[0],
         "initial": initial[0] if number_of_curves == 1 else initial,
-        "fittable": [bool(values.get("fitParamFit" + str(index), model["fittable"][index]))
+        "fittable": [bool(values.get("fitParamFit" + str(index), False))
                      for index in range(len(model["params"]))],
     }
 
@@ -4898,6 +5043,11 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
     if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
         raise ValueError("Load a time-trace or TCSPC data file first.")
     data_kind = getattr(ffs_file, "browser_data_kind", None) or "time_trace"
+    if str(values.get('algorithm') or '') == 'pch':
+        split = _browser_native_split_size(ffs_file, values) if data_kind == 'time_trace' else None
+        result, native_corrs = calculate_pch_native(ffs_file.browser_input_path, values, data_kind, ffs_file.metadata, split)
+        _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=native_corrs)
+        return result
     if data_kind == "tcspc":
         result, native_corrs = calculate_tcspc_correlation(ffs_file.browser_input_path, values)
         duration_s = result.get("duration_s")
@@ -4961,10 +5111,17 @@ def add_corr_and_calc(payload=None):
         # Arrival-time streams always use BrightEyes' time-tag-to-correlation
         # route, irrespective of the previous selection used for binned data.
         values = dict(values)
-        values["algorithm"] = "tt2corr"
+        if values.get('algorithm') != 'pch':
+            values["algorithm"] = "tt2corr"
         # ``FFSfile.add_analysis`` divides ``metadata.duration`` by the
         # requested chunk size, so this must happen before adding the job.
         _browser_set_tcspc_metadata(ffs_file)
+    if values.get('algorithm') == 'pch':
+        values = dict(values)
+        bin_us = _browser_number(values.get('pchBinInput'))
+        if bin_us is None or bin_us <= 0 or not float(bin_us).is_integer():
+            raise ValueError('Enter a positive whole-number histogram bin width in µs.')
+        values['lagInput'] = int(bin_us)  # Desktop analysis.settings.resolution is the PCH bin width.
     analysis = _browser_add_analysis(ffs_file, values)
     result = _browser_calculate_file(ffs_file, values, analysis=analysis)
     response = {"result": result, "preview": _browser_analysis_preview(ffs_file, analysis)}
@@ -5334,6 +5491,9 @@ def browser_restore_ffs(input_path):
                         continue
                     result = _native_correlations_to_result(corrs, analysis.mode,
                         duration_s=_browser_number(getattr(ffs_file.metadata, "duration", None), None))
+                    if str(getattr(analysis.settings, 'algorithm', '')).lower() == 'pch':
+                        result['plot_type'] = 'pch'
+                        result['bin_width_us'] = _browser_number(getattr(analysis.settings, 'resolution', None))
                     analysis.browser_result = result
                     analysis.browser_chunk_source = result
                     labels = result.get("trace_labels", [])
@@ -5745,6 +5905,9 @@ def _browser_fit_current(values, replace=False):
     result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
     if not isinstance(result, dict):
         return _browser_response("Calculate a correlation before fitting.")
+    is_pch = result.get('plot_type') == 'pch'
+    if str(values.get('fitModel', '')).startswith('pch-') != is_pch:
+        raise ValueError('Choose a PCH model for histograms and a correlation model for correlations.')
     source = getattr(ffs_file, "browser_chunk_source", None)
     chunks = source.get("chunks", []) if isinstance(source, dict) else []
     if not chunks or not chunks[0]:
@@ -5862,8 +6025,8 @@ def update_diffLaw(payload=None):
     return _browser_response(
         "Updated diffusion estimate.",
         diffusion={"D_um2_s": diffusion_values[0], "w0_nm": beam_waist_nm, "tauD_s": tau_ms[0] * 1e-3},
-        diffusion_fields={"beamWaistInput": ", ".join(format(v, ".8g") for v in waists_nm),
-                          "diffusionCoefficientInput": ", ".join(format(v, ".8g") for v in diffusion_values)},
+        diffusion_fields={"beamWaistInput": ", ".join(format(v, ".4g") for v in waists_nm),
+                          "diffusionCoefficientInput": ", ".join(format(v, ".4g") for v in diffusion_values)},
         diffusion_law={
             "waist_nm": waists_nm,
             # The desktop diffusion-law graph uses w0² in µm², not w0.
@@ -5876,9 +6039,50 @@ def update_diffLaw(payload=None):
 
 
 def update_difflaw_diameter(payload=None):
-    return _browser_response(
-        "Diameter/viscosity/temperature calculation requires the desktop GUI's temperature and viscosity inputs, which are not in this HTML yet."
-    )
+    from brighteyes_ffs.tools.stokes_einstein import stokes_einstein
+    values = _browser_values(payload)
+    mode = str(values.get('diameterCalculationInput') or 'Calculate diameter')
+    needed = {
+        'Calculate diameter': ('diffusionCoefficientInput', 'temperatureInput', 'viscosityInput'),
+        'Calculate viscosity': ('diffusionCoefficientInput', 'temperatureInput', 'diameterInput'),
+        'Calculate temperature': ('diffusionCoefficientInput', 'viscosityInput', 'diameterInput'),
+    }
+    if mode not in needed:
+        raise ValueError('Unknown Stokes–Einstein calculation.')
+    parsed = {}
+    for key in needed[mode]:
+        text = str(values.get(key) or '').strip()
+        try:
+            parts = [float(v.strip()) for v in text.split(',')]
+        except ValueError as error:
+            raise ValueError('Enter positive comma-separated numbers in ' + key + '.') from error
+        if not parts or any(not math.isfinite(v) or v <= 0 for v in parts):
+            raise ValueError('Enter positive finite values in ' + key + '.')
+        parsed[key] = parts
+    ffs_file = _browser_current_file()
+    fit = getattr(ffs_file, 'browser_fit', None) if ffs_file is not None else None
+    count = len(_browser_fit_curves(fit)) if isinstance(fit, dict) else max(map(len, parsed.values()))
+    for key, parts in parsed.items():
+        if len(parts) == 1:
+            parsed[key] = np.full(count, parts[0], dtype=float)
+        elif len(parts) == count:
+            parsed[key] = np.asarray(parts, dtype=float)
+        else:
+            raise ValueError('Enter one value or one per curve in ' + key + '.')
+    diffusion_si = parsed['diffusionCoefficientInput'] * 1e-12
+    if mode == 'Calculate diameter':
+        answer = np.asarray(stokes_einstein(diffusion_si, parsed['temperatureInput'], parsed['viscosityInput'])) * 1e9
+        target = 'diameterInput'
+    elif mode == 'Calculate viscosity':
+        answer = np.asarray(stokes_einstein(diffusion_si, parsed['temperatureInput'], 1.0)) / (parsed['diameterInput'] * 1e-9)
+        target = 'viscosityInput'
+    else:
+        answer = (parsed['diameterInput'] * 1e-9) / np.asarray(stokes_einstein(diffusion_si, 1.0, parsed['viscosityInput']))
+        target = 'temperatureInput'
+    if not np.all(np.isfinite(answer) & (answer > 0)):
+        raise ValueError('The Stokes–Einstein calculation returned an invalid value.')
+    return _browser_response(mode.replace('Calculate', 'Updated') + '.',
+                             diffusion_fields={target: ', '.join(format(float(v), '.4g') for v in np.ravel(answer))})
 
 
 def difflaw_change(payload=None):
@@ -6652,6 +6856,8 @@ def browser_action_catalog():
       function renderFitModel(modelKey) {
         const model = fitModels[modelKey];
         if (!model) return;
+        byId("fitWeighted").checked = false;
+        byId("fitWeighted").indeterminate = false;
         const fields = byId("fitParameterFields");
         fields.replaceChildren();
         model.params.forEach(function (name, index) {
@@ -6666,13 +6872,13 @@ def browser_action_catalog():
           input.id = "fitParam" + index;
           input.type = "text";
           input.value = model.defaults[index];
-          input.disabled = !model.fittable[index];
+          input.disabled = false;
           input.title = model.fittable[index]
             ? "Comma-separated starting values, one for each curve"
             : "Comma-separated fixed values, one for each curve";
           checkbox.id = "fitParamFit" + index;
           checkbox.type = "checkbox";
-          checkbox.checked = Boolean(model.fittable[index]);
+          checkbox.checked = false;
           checkbox.disabled = !model.fittable[index];
           checkbox.setAttribute("aria-label", "Fit " + name);
           fitText.className = "fit-toggle-text";
@@ -6682,7 +6888,7 @@ def browser_action_catalog():
         });
         byId("fitSummary").hidden = !model.global_fit;
         byId("fitSummary").textContent = model.global_fit
-          ? "Global fit: concentration, diffusion coefficient and flow velocities are shared across curves."
+          ? (model.plot_type === 'pch' ? 'Global fit: both concentrations and bin time are shared across curves.' : 'Global fit: concentration, diffusion coefficient and flow velocities are shared across curves.')
           : "";
       }
 
@@ -6754,7 +6960,7 @@ def browser_action_catalog():
           }
         });
         const range = Array.isArray(first.fitrange) ? first.fitrange : [first.start, first.stop];
-        if (range[0] !== null && range[0] !== undefined && Number.isFinite(Number(range[0]))) byId("fitStart").value = String(Math.max(1, Number(range[0])));
+        if (range[0] !== null && range[0] !== undefined && Number.isFinite(Number(range[0]))) byId("fitStart").value = String(Math.max(model.plot_type === 'pch' ? 0 : 1, Number(range[0])));
         if (range[1] !== null && range[1] !== undefined && Number.isFinite(Number(range[1]))) byId("fitStop").value = String(Number(range[1]));
       }
 
@@ -6913,13 +7119,15 @@ def browser_action_catalog():
         Array.from(select.options).forEach(function (option) {
           // Time-tag-to-corr also supports binned spot-variation traces;
           // its browser path does not support the two all-detector modes.
-          const unavailable = isArrival ? option.value !== "tt2corr"
-            : isBinned && allMode && option.value === "tt2corr";
+          const unavailable = (isArrival && option.value !== "tt2corr" && option.value !== "pch") ||
+            (isBinned && allMode && option.value === "tt2corr") || (allMode && option.value === "pch");
           option.disabled = unavailable;
           option.hidden = unavailable;
         });
         const selected = select.selectedOptions[0];
         if (!selected || selected.disabled) select.value = isArrival ? "tt2corr" : "multipletau";
+        byId('pchBinControl').hidden = select.value !== 'pch';
+        byId('correlationPrecisionControl').hidden = select.value === 'pch';
         select.title = isBinned && byId("correlationType").value === "all_cross"
           ? "All cross-correlations use the package's sparse-matrix algorithm." : "";
       }
@@ -7273,7 +7481,64 @@ def browser_action_catalog():
         }
       });
 
+      function drawPhotonCountingHistogram(result, fit) {
+        const target = canvasContext(byId('correlationCanvas'), 620, 500);
+        const ctx = target.context, palette = plotPalette();
+        byId('correlationCanvas').__correlationGeometry = null;
+        ctx.fillStyle = palette.background; ctx.fillRect(0, 0, target.width, target.height);
+        const multi = Array.isArray(result.tau_s && result.tau_s[0]);
+        const xs = multi ? result.tau_s : [result.tau_s || []];
+        const ys = multi ? result.g : [result.g || []];
+        const points = [];
+        xs.forEach(function (x, i) { x.forEach(function (v, j) {
+          const y = ys[i] && ys[i][j];
+          if (Number.isFinite(v) && v >= 0 && Number.isFinite(y) && y > 0) points.push([v, y]);
+        }); });
+        if (!points.length) return;
+        let maxX = 1, minY = 1;
+        points.forEach(function (p) { maxX = Math.max(maxX, p[0]); minY = Math.min(minY, p[1]); });
+        const minLog = Math.floor(Math.log10(minY)), maxLog = 0;
+        const logRange = Math.max(1, maxLog - minLog);
+        const left = 66, right = 18, top = 35, bottom = 52;
+        const width = target.width - left - right, height = target.height - top - bottom;
+        const xAt = function (x) { return left + x * width / maxX; };
+        const yAt = function (y) { return top + (maxLog - Math.log10(y)) * height / logRange; };
+        ctx.font = '10px system-ui'; ctx.strokeStyle = palette.axis; ctx.fillStyle = palette.label;
+        ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, top + height); ctx.lineTo(left + width, top + height); ctx.stroke();
+        ctx.textAlign = 'center';
+        for (let i = 0; i <= 4; i++) { const x = maxX * i / 4; ctx.fillText(Number(x.toPrecision(3)), xAt(x), top + height + 17); }
+        ctx.textAlign = 'right';
+        const tickStep = Math.max(1, Math.ceil(logRange / 6));
+        for (let k = minLog; k <= 0; k += tickStep) { const y = yAt(Math.pow(10, k)); ctx.fillText('1e' + k, left - 6, y + 3); }
+        ctx.textAlign = 'center'; ctx.fillText('Counts per bin', left + width / 2, target.height - 10);
+        ctx.save(); ctx.translate(14, top + height / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('Relative frequency', 0, 0); ctx.restore();
+        const colors = ['#4de0d0', '#b39cff', '#ffb56b', '#70e49b', '#ff7d8a'];
+        xs.forEach(function (trace, i) { ctx.fillStyle = colors[i % colors.length]; trace.forEach(function (x, j) {
+          const y = ys[i] && ys[i][j]; if (Number.isFinite(x) && x >= 0 && Number.isFinite(y) && y > 0) {
+            ctx.beginPath(); ctx.arc(xAt(x), yAt(y), 2.5, 0, 2 * Math.PI); ctx.fill();
+          }
+        }); });
+        const fitCurves = fit ? (Array.isArray(fit.fits) ? fit.fits : [fit]) : [];
+        fitCurves.forEach(function (curve, i) {
+          const trace = xs[i] || [], values = curve.curve || [];
+          ctx.strokeStyle = colors[i % colors.length]; ctx.lineWidth = 1.5; ctx.beginPath();
+          let drawing = false;
+          values.forEach(function (y, j) {
+            const x = trace[j];
+            if (y === null || !Number.isFinite(y) || y <= 0 || !Number.isFinite(x)) { drawing = false; return; }
+            if (drawing) ctx.lineTo(xAt(x), yAt(y)); else { ctx.moveTo(xAt(x), yAt(y)); drawing = true; }
+          });
+          ctx.stroke();
+        });
+        ctx.textAlign = 'left'; let legendX = left;
+        (result.trace_labels || []).slice(0, 5).forEach(function (label, i) {
+          ctx.fillStyle = colors[i % colors.length]; ctx.fillRect(legendX, 9, 5, 5);
+          ctx.fillStyle = palette.label; ctx.fillText(String(label), legendX + 9, 15); legendX += ctx.measureText(String(label)).width + 22;
+        });
+      }
+
       function drawCorrelation(result, fit) {
+        if (result.plot_type === 'pch') { drawPhotonCountingHistogram(result, fit); return; }
         const palette = plotPalette();
         const target = canvasContext(byId("correlationCanvas"), 620, 500);
         const context = target.context;
@@ -7530,6 +7795,19 @@ def browser_action_catalog():
 
       function renderResult(result, fit) {
         if (!result) return;
+        const isPch = result.plot_type === 'pch';
+        const modelSelect = byId('fitModel');
+        const priorType = modelSelect.dataset.plotType;
+        Array.from(modelSelect.options).forEach(function (option) {
+          option.hidden = (fitModels[option.value].plot_type === 'pch') !== isPch;
+        });
+        modelSelect.dataset.plotType = isPch ? 'pch' : 'correlation';
+        byId('fitStart').min = isPch ? '0' : '1';
+        if (priorType !== modelSelect.dataset.plotType) {
+          modelSelect.value = isPch ? 'pch-1' : 'free-diffusion-1';
+          byId('fitStart').value = isPch ? '0' : '1';
+          renderFitModel(modelSelect.value);
+        }
         if (fit) showFitInControls(fit);
         byId("resultEmpty").hidden = true;
         byId("resultContent").hidden = false;
@@ -7676,7 +7954,7 @@ def browser_action_catalog():
           const showStoredValues = function (key, target) {
             const values = fitCurves.map(function (curve) { return curve[key]; });
             if (values.length && values.every(function (value) { return value !== null && value !== undefined && Number.isFinite(Number(value)); }))
-              byId(target).value = values.map(function (value) { return String(Number(Number(value).toPrecision(8))); }).join(", ");
+              byId(target).value = values.map(function (value) { return String(Number(Number(value).toPrecision(4))); }).join(", ");
           };
           showStoredValues("w0", "beamWaistInput");
           showStoredValues("D", "diffusionCoefficientInput");
@@ -7696,7 +7974,7 @@ def browser_action_catalog():
           }
         }
         if (response.diffusion) {
-          byId("diffusionSummary").textContent = "D = " + Number(response.diffusion.D_um2_s).toPrecision(5) + " µm²/s (w₀ = " + response.diffusion.w0_nm + " nm).";
+          byId("diffusionSummary").textContent = "D = " + Number(response.diffusion.D_um2_s).toPrecision(4) + " µm²/s (w₀ = " + Number(response.diffusion.w0_nm).toPrecision(4) + " nm).";
         }
         if (response.diffusion_law) drawDiffusionLaw(response.diffusion_law);
         if (response.download) requestDownload(response.download);
@@ -7814,6 +8092,18 @@ def browser_action_catalog():
       }
 
       function bindBrowserOnlyInputs() {
+        byId('algorithm').addEventListener('change', function () {
+          updateAlgorithmChoices(activeView && activeView.active_file);
+        });
+        ['beamWaistInput', 'diffusionCoefficientInput', 'temperatureInput', 'viscosityInput', 'diameterInput'].forEach(function (id) {
+          byId(id).addEventListener('blur', function () {
+            const parts = this.value.split(',').map(function (part) { return part.trim(); });
+            const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+            if (parts.every(function (part) { return numeric.test(part) && Number.isFinite(Number(part)); })) {
+              this.value = parts.map(function (part) { return String(Number(Number(part).toPrecision(4))); }).join(', ');
+            }
+          });
+        });
         byId("correlationType").addEventListener("change", function () {
           updateAlgorithmChoices(activeView && activeView.active_file);
           updateCrossAveragingControls();
