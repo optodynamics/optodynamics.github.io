@@ -1597,6 +1597,7 @@
       </div>
       <div class="file-details">
         <div class="file-location"><div class="file-name-row"><button id="favouriteButton" type="button" aria-label="Mark file as favourite" title="Mark as favourite" aria-pressed="false" disabled>☆</button><strong id="fcsFileTitle">My FCS File</strong></div></div>
+        <button id="removeFileButton" class="tool-button" type="button" data-python-handler="remove_current_ffs_file" title="Remove current data file from session" aria-label="Remove current data file from session" disabled><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button>
         <input id="labelInput" class="compact-input" type="text" value="Label" aria-label="File label">
         <input id="yCoordInput" class="compact-input" type="text" value="Y" aria-label="Y coordinate">
         <input id="xCoordInput" class="compact-input" type="text" value="X" aria-label="X coordinate">
@@ -1797,11 +1798,8 @@
     <details class="command-drawer">
       <summary>Desktop menu commands</summary>
       <div class="command-grid">
-        <button class="tool-button" type="button" data-python-handler="open_image_file">Open new image</button>
-        <button class="tool-button" type="button" data-python-handler="change_image_file">Change image</button>
         <button class="tool-button" type="button" data-python-handler="open_session">Open session</button>
         <button class="tool-button" type="button" data-python-handler="save_session">Save session (.ffs)</button>
-        <button class="tool-button" type="button" data-python-handler="remove_current_ffs_file">Current FFS file</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_image">Current image</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
         <button class="tool-button" type="button" data-python-handler="copy_current_correlation">Copy current correlation</button>
@@ -6996,6 +6994,10 @@ def browser_action_catalog():
         const button = byId("imageNameButton");
         const activeImage = view && view.images && view.images[view.active_image];
         const imageCount = view && Array.isArray(view.images) ? view.images.length : 0;
+        const nextButton = byId('nextImageButton');
+        const atLastImage = !imageCount || Number(view.active_image) >= imageCount - 1;
+        nextButton.title = atLastImage ? 'Add a new image' : 'Next image';
+        nextButton.setAttribute('aria-label', nextButton.title);
         byId("imageCounter").textContent = "Image " + (activeImage ? Number(view.active_image) + 1 : 0) + " of " + imageCount;
         preview.replaceChildren();
         if (!activeImage) {
@@ -7211,6 +7213,7 @@ def browser_action_catalog():
         byId("newFileButton").dataset.fileIndex = String(files.length);
         byId("newFileButton").classList.toggle("is-active", files.length === 0);
         const file = view.active_file;
+        byId('removeFileButton').disabled = !file;
         byId("fcsFileTitle").textContent = file ? (file.name || "FFS file") : "My FCS File";
         byId("fcsFileTitle").title = file ? (file.name || file.label || "") : "";
         const star = byId("favouriteButton");
@@ -8110,6 +8113,14 @@ def browser_action_catalog():
             event.preventDefault();
             event.stopImmediatePropagation();
             const handlerName = button.dataset.pythonHandler;
+            if (handlerName === 'next_image') {
+              const images = activeView && Array.isArray(activeView.images) ? activeView.images : [];
+              if (!images.length || Number(activeView.active_image) >= images.length - 1) {
+                imageInput.dataset.replace = 'false';
+                imageInput.click();
+                return;
+              }
+            }
             if (button.id === "newFileButton") pendingRawReload = null;
             if (handlerName === "new_session" && !window.confirm("Create a new session? Unsaved changes will be lost.")) return;
             if (handlerName === "remove_current_ffs_file" && !window.confirm("Remove the current FFS file and its analyses?")) return;
