@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Browser-based FFS">
-  <title>BrightEyes-FFS · H5 Correlations</title>
+  <title>Web-FFS</title>
   <script>
     (function () {
       try {
@@ -76,6 +76,11 @@
       gap: 24px;
       margin-bottom: 28px;
     }
+
+    .topbar-brand { position: relative; min-width: 0; }
+    #sessionName { position: absolute; top: 100%; left: 0; max-width: 100%;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      font-size: .8rem; line-height: 1.2; color: var(--soft); cursor: text; }
 
     .eyebrow {
       display: block;
@@ -310,8 +315,10 @@
       font-size: .77rem;
     }
     #xCoordInput, #yCoordInput { width: 50px !important; flex: 0 0 50px; }
-    #imageNameButton, #newFileButton, #saveLabelButton, #giveTourButton, #loadExampleButton { font-weight: 400; }
-    #newFileButton, #loadExampleButton, #giveTourButton { flex: 0 0 auto; white-space: nowrap; }
+    #imageNameButton, #newFileButton, #openSessionWelcome, #saveLabelButton, #giveTourButton, #loadExampleButton { font-weight: 400; }
+    #newFileButton, #openSessionWelcome, #loadExampleButton, #giveTourButton { flex: 0 0 auto; white-space: nowrap; }
+    #resetSessionTitle { all: unset; cursor: pointer; }
+    #resetSessionTitle:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
     .tour-spotlight { position: fixed; z-index: 1100; border: 3px solid #48c9c3; border-radius: 10px; box-shadow: 0 0 0 9999px rgba(3, 14, 24, .64); pointer-events: none; }
     .tour-card { position: fixed; z-index: 1101; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); padding: 17px 19px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 36px rgba(0,0,0,.3); }
     .tour-card h2 { margin: 3px 0 7px; font-size: 1rem; }
@@ -610,6 +617,16 @@
       background: transparent;
       font-size: .78rem;
     }
+
+    .image-preview-wrap { position: relative; }
+    .image-remove-button { position: absolute; top: 6px; right: 6px; z-index: 2;
+      display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+      border: 1px solid rgba(255,255,255,.45); border-radius: 7px;
+      color: white; background: rgba(15, 25, 35, .72); opacity: 0;
+      pointer-events: none; transition: opacity .15s ease; }
+    .panel:has(#imagePreview):hover .image-remove-button:not(:disabled),
+    .image-remove-button:focus-visible { opacity: 1; pointer-events: auto; }
+    .image-remove-button:hover { background: #a92f3a; }
 
     .image-coordinate-preview {
       display: block;
@@ -1551,10 +1568,10 @@
   </div>
   <main class="shell">
     <header class="topbar">
-      <div>
+      <div class="topbar-brand">
         <span class="eyebrow">Fluorescence Fluctuation Spectroscopy · browser analysis</span>
-        <h1>Web-FFS</h1>
-        <span id="sessionName" hidden title="Double-click to rename the session" style="display:none; font-size:.8rem; color:var(--soft); cursor:text;"></span>
+        <h1><button id="resetSessionTitle" type="button" title="Start a new session">Web-FFS</button></h1>
+        <span id="sessionName" hidden title="Double-click to rename the session"></span>
       </div>
       <div class="topbar-actions">
         <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">☀ Light theme</button>
@@ -1570,7 +1587,10 @@
         <section class="panel" aria-labelledby="imageControlsHeading">
           <div class="panel-heading"><h2 id="imageControlsHeading">Image</h2></div>
           <div class="panel-body">
-            <div class="image-preview" id="imagePreview">Image preview appears here</div>
+            <div class="image-preview-wrap">
+              <div class="image-preview" id="imagePreview">Image preview appears here</div>
+              <button id="removeImageButton" class="image-remove-button" type="button" data-python-handler="remove_current_image" title="Remove this image from the session" aria-label="Remove this image from the session" disabled><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button>
+            </div>
             <div class="image-nav">
               <button class="nav-button" id="previousImageButton" type="button" data-python-handler="previous_image" aria-label="Previous image">‹</button>
               <button class="tool-button" id="imageNameButton" style="flex:1" type="button" data-python-handler="change_image_file">Open image</button>
@@ -1592,6 +1612,7 @@
         <div id="fileTabList" class="file-tab-list" role="tablist" aria-label="Files for current image"></div>
         <button class="nav-button" id="nextFileButton" type="button" data-python-handler="next_file" aria-label="Next FFS file">›</button>
         <button id="newFileButton" class="tool-button is-active" type="button" data-python-handler="activate_ffs_file" data-file-index="0">New file</button>
+        <button id="openSessionWelcome" class="tool-button is-active" type="button">Open .ffs session</button>
         <button id="giveTourButton" class="tool-button" type="button" title="Load the example and explore the interface">Give me a tour</button>
         <button id="loadExampleButton" class="tool-button" type="button" title="Load the example FFS session from GitHub">Load example</button>
       </div>
@@ -1798,7 +1819,6 @@
     <details class="command-drawer">
       <summary>Desktop menu commands</summary>
       <div class="command-grid">
-        <button class="tool-button" type="button" data-python-handler="open_session">Open session</button>
         <button class="tool-button" type="button" data-python-handler="save_session">Save session (.ffs)</button>
         <button class="tool-button" type="button" data-python-handler="remove_current_image">Current image</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
@@ -5671,7 +5691,11 @@ def remove_current_image(payload=None):
     index = int(ffslib.active_image)
     del ffslib.lib[index]
     ffslib.active_image = min(index, len(ffslib.lib) - 1) if ffslib.lib else None
-    return _browser_response("Removed the current image.")
+    current = _browser_current_file()
+    result = getattr(current, 'browser_result', None) if current is not None else None
+    if isinstance(result, dict):
+        return _browser_response('Removed the current image.', result=result, fit=getattr(current, 'browser_fit', None), clear_diffusion_law=True)
+    return _browser_response('Removed the current image.', clear_result=True, clear_diffusion_law=True)
 
 
 def copy_current_correlation(payload=None):
@@ -6430,8 +6454,9 @@ def browser_action_catalog():
         sessionFilename = name;
         const label = byId('sessionName');
         label.textContent = name || '';
+        document.title = name ? 'Web-FFS - ' + name : 'Web-FFS';
+        label.title = name ? name + ' — double-click to rename the session' : '';
         label.hidden = !name;
-        label.style.display = name ? 'block' : 'none';
       }
 
       function askSessionFilename(current) {
@@ -6994,6 +7019,7 @@ def browser_action_catalog():
         const button = byId("imageNameButton");
         const activeImage = view && view.images && view.images[view.active_image];
         const imageCount = view && Array.isArray(view.images) ? view.images.length : 0;
+        byId('removeImageButton').disabled = !activeImage;
         const nextButton = byId('nextImageButton');
         const atLastImage = !imageCount || Number(view.active_image) >= imageCount - 1;
         nextButton.title = atLastImage ? 'Add a new image' : 'Next image';
@@ -7543,6 +7569,10 @@ def browser_action_catalog():
         ctx.textAlign = 'center'; ctx.fillText('Counts per bin', left + width / 2, target.height - 10);
         ctx.save(); ctx.translate(14, top + height / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('Relative frequency', 0, 0); ctx.restore();
         const colors = ['#4de0d0', '#b39cff', '#ffb56b', '#70e49b', '#ff7d8a'];
+        // Clip data and fit curves to the plotting rectangle, including
+        // values below the displayed logarithmic range.
+        ctx.save();
+        ctx.beginPath(); ctx.rect(left, top, width, height); ctx.clip();
         xs.forEach(function (trace, i) { ctx.fillStyle = colors[i % colors.length]; trace.forEach(function (x, j) {
           const y = ys[i] && ys[i][j]; if (Number.isFinite(x) && x >= 0 && Number.isFinite(y) && y > 0) {
             ctx.beginPath(); ctx.arc(xAt(x), yAt(y), 2.5, 0, 2 * Math.PI); ctx.fill();
@@ -7560,6 +7590,7 @@ def browser_action_catalog():
           });
           ctx.stroke();
         });
+        ctx.restore();
         ctx.textAlign = 'left'; let legendX = left;
         (result.trace_labels || []).slice(0, 5).forEach(function (label, i) {
           ctx.fillStyle = colors[i % colors.length]; ctx.fillRect(legendX, 9, 5, 5);
@@ -8124,6 +8155,8 @@ def browser_action_catalog():
             if (button.id === "newFileButton") pendingRawReload = null;
             if (handlerName === "new_session" && !window.confirm("Create a new session? Unsaved changes will be lost.")) return;
             if (handlerName === "remove_current_ffs_file" && !window.confirm("Remove the current FFS file and its analyses?")) return;
+            if (handlerName === 'remove_current_image' && !window.confirm('Remove this image and all its associated FCS files, correlations, and fits from the session?\n\nNo files will be deleted from your disk.')) return;
+            const removedImageIndex = handlerName === 'remove_current_image' && activeView ? Number(activeView.active_image) : null;
             let saveFilename = null;
             if (handlerName === 'save_session') {
               saveFilename = sessionFilename || askSessionFilename(null);
@@ -8154,6 +8187,18 @@ def browser_action_catalog():
               await waitForBusyPaint();
             }
             const response = await dispatchPythonHandler(handlerName, payload);
+            if (handlerName === 'remove_current_image' && response && !response.error && Number.isInteger(removedImageIndex)) {
+              const removedUrl = imageUrls.splice(removedImageIndex, 1)[0];
+              if (removedUrl) URL.revokeObjectURL(removedUrl);
+              const remainingFiles = Array.from(h5FilesByTab.entries());
+              h5FilesByTab.clear();
+              remainingFiles.forEach(function (entry) {
+                const parts = String(entry[0]).split(':');
+                const imageIndex = Number(parts[0]);
+                if (parts.length !== 2 || !Number.isInteger(imageIndex) || imageIndex === removedImageIndex) return;
+                h5FilesByTab.set(String(imageIndex > removedImageIndex ? imageIndex - 1 : imageIndex) + ':' + parts[1], entry[1]);
+              });
+            }
             if (handlerName === 'save_session' && response && !response.error && response.download) {
               response.download.name = saveFilename;
               setSessionFilename(saveFilename);
@@ -8201,10 +8246,33 @@ def browser_action_catalog():
         const dismissExample = function () {
           byId("loadExampleButton").hidden = true;
           byId("giveTourButton").hidden = true;
+          byId("openSessionWelcome").hidden = true;
         };
-        document.addEventListener("click", dismissExample, {once: true});
-        document.addEventListener("input", dismissExample, {once: true});
-        document.addEventListener("change", dismissExample, {once: true});
+        document.addEventListener("click", dismissExample);
+        document.addEventListener("input", dismissExample);
+        document.addEventListener("change", dismissExample);
+        byId('openSessionWelcome').addEventListener('click', function () { sessionInput.click(); });
+        byId('resetSessionTitle').addEventListener('click', async function () {
+          if (!pyodide) { setStatus('error', 'Browser Python is still starting.'); return; }
+          if (!window.confirm('Start a new session? Unsaved changes will be lost.')) return;
+          try {
+            await releasePreviousRawData();
+            const response = await dispatchPythonHandler('new_session', {values: {}});
+            if (response.error) { applyResponse(response); return; }
+            h5FilesByTab.clear();
+            imageUrls.forEach(function (url) { if (url) URL.revokeObjectURL(url); });
+            imageUrls.length = 0;
+            setSessionFilename(null);
+            lastDiffusionLaw = null;
+            byId('diffusionPlotWrap').hidden = true;
+            clearResult();
+            applyResponse(response);
+            drawPreview(startupPreviewData || syntheticPreview());
+            byId('openSessionWelcome').hidden = false;
+            byId('giveTourButton').hidden = false;
+            byId('loadExampleButton').hidden = false;
+          } catch (error) { setStatus('error', 'Could not start a new session: ' + describeError(error)); }
+        });
         async function loadExampleSession() {
           if (!pyodide) { setStatus("error", "Browser Python is still starting."); return false; }
           const hasFiles = activeView && (activeView.images || []).some(function (image) { return (image.files || []).length > 0; });
