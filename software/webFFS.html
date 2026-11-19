@@ -627,6 +627,7 @@
     .panel:has(#imagePreview):hover .image-remove-button:not(:disabled),
     .image-remove-button:focus-visible { opacity: 1; pointer-events: auto; }
     .image-remove-button:hover { background: #a92f3a; }
+    #removeFileButton:not(:disabled):hover { background: #a92f3a; border-color: #a92f3a; color: white; }
 
     .image-coordinate-preview {
       display: block;
@@ -1820,7 +1821,6 @@
       <summary>Desktop menu commands</summary>
       <div class="command-grid">
         <button class="tool-button" type="button" data-python-handler="save_session">Save session (.ffs)</button>
-        <button class="tool-button" type="button" data-python-handler="remove_current_image">Current image</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
         <button class="tool-button" type="button" data-python-handler="copy_current_correlation">Copy current correlation</button>
         <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Notebook: redo analysis</button>
@@ -4745,18 +4745,31 @@ def activate_ffs_file(payload=None):
     return _browser_response("Choose an H5 count-data file.", browser_action="request_data_file")
 
 
+def _browser_selected_image_response():
+    """Restore the selected image's active file using the file-tab pathway."""
+    image = _browser_current_image()
+    if image is not None and image.active_ffs is not None and 0 <= int(image.active_ffs) < image.num_files:
+        response = json.loads(activate_ffs_file({'button_data': {'fileIndex': int(image.active_ffs)}}))
+        response['show_chunks_mode'] = getattr(_browser_current_file(), 'browser_chunk_display', 'average')
+    else:
+        response = json.loads(_browser_response('Selected image.', clear_result=True, show_chunks_mode='average'))
+    response.update(message='Selected image ' + str(int(ffslib.active_image) + 1) + '.',
+                    image_navigation=True, clear_diffusion_law=True)
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
+
+
 def previous_image(payload=None):
     if ffslib.num_images < 1:
         return _browser_response("No image is loaded.")
     ffslib.active_image = max(0, int(ffslib.active_image or 0) - 1)
-    return _browser_response("Selected image " + str(ffslib.active_image + 1) + ".")
+    return _browser_selected_image_response()
 
 
 def next_image(payload=None):
     if ffslib.num_images < 1:
         return _browser_response("No image is loaded.")
     ffslib.active_image = min(ffslib.num_images - 1, int(ffslib.active_image or 0) + 1)
-    return _browser_response("Selected image " + str(ffslib.active_image + 1) + ".")
+    return _browser_selected_image_response()
 
 
 def previous_file(payload=None):
@@ -7276,7 +7289,12 @@ def browser_action_catalog():
             byId("chunkOnInput").checked = true;
           }
         }
-        else drawPreview(startupPreviewData || syntheticPreview());
+        else {
+          drawPreview(startupPreviewData || syntheticPreview());
+          byId('chunkNumberInput').value = '0';
+          byId('chunkNumberInput').removeAttribute('max');
+          byId('chunkOnInput').checked = true;
+        }
         const analysisSelect = byId("analysisSelect");
         if (analysisSelect) {
           analysisSelect.replaceChildren();
@@ -8009,6 +8027,17 @@ def browser_action_catalog():
         }
         if (response.result) renderResult(response.result, response.fit);
         else if (response.clear_result) clearResult();
+        if (response.image_navigation) {
+          // Never leave another image's fit and diffusion parameters visible.
+          if (!response.fit) {
+            renderFitModel(byId('fitModel').value);
+            byId('fitStart').value = byId('fitModel').dataset.plotType === 'pch' ? '0' : '1';
+            byId('fitStop').value = '0';
+          }
+          ['beamWaistInput', 'diffusionCoefficientInput', 'diameterInput'].forEach(function (id) {
+            byId(id).value = byId(id).defaultValue;
+          });
+        }
         if (response.fit_values) Object.entries(response.fit_values).forEach(function (item) { byId(item[0]).value = item[1]; });
         if (response.fit) {
           const fitCurves = Array.isArray(response.fit.fits) ? response.fit.fits : [response.fit];
@@ -8019,6 +8048,28 @@ def browser_action_catalog():
           };
           showStoredValues("w0", "beamWaistInput");
           showStoredValues("D", "diffusionCoefficientInput");
+          if (response.result && !response.diffusion_law) {
+            // w0 and tauD are stored with each fitted curve, including fits
+            // restored from .ffs files. Reconstruct only from this fit so a
+            // previously selected file's diffusion law cannot leak through.
+            const waists = fitCurves.map(function (curve) { return Number(curve.w0); });
+            const taus = fitCurves.map(function (curve) { return Number(curve.tauD_s); });
+            const valid = fitCurves.length && fitCurves.every(function (curve, index) {
+              return curve.w0 != null && curve.tauD_s != null &&
+                Number.isFinite(waists[index]) && waists[index] > 0 &&
+                Number.isFinite(taus[index]) && taus[index] > 0;
+            });
+            if (valid) {
+              drawDiffusionLaw({ waist_squared_um2: waists.map(function (w) { return Math.pow(w * 1e-3, 2); }),
+                tau_ms: taus.map(function (tau) { return tau * 1e3; }) });
+            } else {
+              lastDiffusionLaw = null;
+              byId('diffusionPlotWrap').hidden = true;
+            }
+          }
+        } else if (response.result || response.clear_result) {
+          lastDiffusionLaw = null;
+          byId('diffusionPlotWrap').hidden = true;
         }
         if (response.diffusion_fields) Object.entries(response.diffusion_fields).forEach(function (item) { byId(item[0]).value = item[1]; });
         if (response.result && response.fit &&
