@@ -1688,6 +1688,10 @@
                   </div>
                 </div>
 
+                <div id="correlationSchemeWrap" style="text-align:center; overflow:hidden;">
+                  <img id="correlationScheme" alt="Diagram of selected detector correlations" style="display:none; max-width:100%; max-height:150px; object-fit:contain;">
+                  <div id="correlationSchemeStatus" class="timing-note" aria-live="polite">Correlation diagram loads when Python is ready.</div>
+                </div>
 				<label><span>Algorithm</span><select id="algorithm">
                   <option value="multipletau">Multipletau</option>
 				  <option value="wiener-khinchin">Wiener-Khinchin</option>
@@ -2301,6 +2305,49 @@ def _desktop_correlation_request(values):
         params = _desktop_crosscorrelation_params(names[detector])
         return params["listOfG"], params["elements"], params["average"]
     raise ValueError("Unsupported correlation mode: " + mode)
+
+
+def browser_correlation_scheme(values_json):
+    """Draw selected requests with the package's detector microimage plotter."""
+    import io
+    import matplotlib.pyplot as plt
+    from brighteyes_ffs.fcs.plot_corrs_scheme import plot_correlations_microimage
+    values = json.loads(values_json)
+    requests, names, averaging = _desktop_correlation_request(values)
+    detector = {'custom': '5x5', 'pi-imaging-pda23': 'pda-23',
+                'airyscan': 'airyscan', 'prism-7x7': '7x7'}.get(values.get('detectorType'))
+    if detector is None:
+        raise ValueError('Unsupported detector for correlation diagram.')
+    total = len(names)
+    limit = 32
+    # The plotter expects explicit pairs when crossAll has no averaging.
+    # Large all-pairs requests can contain thousands of panels, so show an
+    # accurately labelled sample rather than exhausting browser memory.
+    if requests and requests[0] == 'crossAll' and averaging is None:
+        shown_requests, shown_average = names[:limit], None
+    elif averaging is not None:
+        shown_requests, shown_average = requests, averaging[:limit]
+    else:
+        shown_requests, shown_average = requests[:limit], None
+    shown_names = names[:limit]
+    if not shown_names:
+        raise ValueError('No correlation curves are selected.')
+    rows = (len(shown_names) + 5) // 6
+    existing = set(plt.get_fignums())
+    try:
+        plot_correlations_microimage(detector, shown_requests, shown_names, shown_average,
+                                     figsize=(6, 1.5 if rows == 1 else rows * 1.15))
+        new_figures = [number for number in plt.get_fignums() if number not in existing]
+        if not new_figures:
+            raise ValueError('The package plotting function did not create a figure.')
+        fig = plt.figure(new_figures[-1])
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format='png', dpi=120, transparent=True)
+        return json.dumps({'image': base64.b64encode(buffer.getvalue()).decode('ascii'),
+                           'shown': len(shown_names), 'total': total})
+    finally:
+        for number in set(plt.get_fignums()) - existing:
+            plt.close(number)
 
 
 def _cross_custom_list(value, label):
@@ -6616,6 +6663,31 @@ def browser_action_catalog():
         return values;
       }
 
+      let schemeTimer = null;
+      let schemeGeneration = 0;
+      function scheduleCorrelationScheme() {
+        const generation = ++schemeGeneration;
+        clearTimeout(schemeTimer);
+        byId('correlationScheme').style.display = 'none';
+        byId('correlationSchemeStatus').textContent = 'Updating correlation diagram…';
+        if (!pyodide) return;
+        schemeTimer = setTimeout(async function () {
+          try {
+            const scheme = await callPython('browser_correlation_scheme(correlation_scheme_json)', {
+              correlation_scheme_json: JSON.stringify(formValues())
+            });
+            if (generation !== schemeGeneration) return;
+            byId('correlationScheme').src = 'data:image/png;base64,' + scheme.image;
+            byId('correlationScheme').style.display = 'inline-block';
+            byId('correlationSchemeStatus').textContent = scheme.shown < scheme.total
+              ? 'Showing ' + scheme.shown + ' of ' + scheme.total + ' selected curves.' : '';
+          } catch (error) {
+            if (generation !== schemeGeneration) return;
+            byId('correlationSchemeStatus').textContent = 'Diagram unavailable: ' + describeError(error);
+          }
+        }, 300);
+      }
+
       function parsePythonResponse(raw) {
         if (raw === undefined || raw === null) return {};
         if (typeof raw === "object") return raw;
@@ -8006,6 +8078,7 @@ def browser_action_catalog():
         }
         if (response.detector_type && byId("detectorType")) {
           byId("detectorType").value = response.detector_type;
+          scheduleCorrelationScheme();
         }
         if (response.algorithm && byId("algorithm")) {
           byId("algorithm").value = response.algorithm;
@@ -8291,6 +8364,12 @@ def browser_action_catalog():
           updateCrossAveragingControls();
         });
         byId("crossAveraging").addEventListener("change", updateCrossAveragingControls);
+        ['detectorType', 'correlationType', 'crossAveraging'].forEach(function (id) {
+          byId(id).addEventListener('change', scheduleCorrelationScheme);
+        });
+        ['crossAverageList', 'crossOutputList'].forEach(function (id) {
+          byId(id).addEventListener('input', scheduleCorrelationScheme);
+        });
         updateCrossAveragingControls();
         // Keep the example accessible by keyboard navigation; dismiss it
         // after an actual click, edit, or activation, including its own click.
@@ -8872,6 +8951,7 @@ def browser_action_catalog():
           startupPreviewData = await callPython("browser_synthetic_preview()");
           drawPreview(startupPreviewData);
           await initializeFitModels();
+          scheduleCorrelationScheme();
           window.webFFSPython = { dispatch: dispatchPythonHandler, pyodide: pyodide };
           setStatus("ready", "Browser Python ready · BrightEyes-FFS v" + packageVersion);
         } catch (error) {
