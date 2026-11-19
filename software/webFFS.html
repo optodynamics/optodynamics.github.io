@@ -1554,6 +1554,7 @@
       <div>
         <span class="eyebrow">Fluorescence Fluctuation Spectroscopy · browser analysis</span>
         <h1>Web-FFS</h1>
+        <span id="sessionName" hidden title="Double-click to rename the session" style="display:none; font-size:.8rem; color:var(--soft); cursor:text;"></span>
       </div>
       <div class="topbar-actions">
         <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">☀ Light theme</button>
@@ -2787,7 +2788,7 @@ def calculate_pch_native(input_path, values, data_kind, metadata=None, split=Non
         from brighteyes_ffs.pch.atimes2pch import atimes_file_2_pch
         corrs, _ = atimes_file_2_pch(input_path, list_of_pch=list_of_g, split=chunk_s,
             bin_time=bin_us * 1e-6, normalize=True, time_trace=True,
-            list_of_pch_out=elements, sysclk_MHz=240, perform_calib=False, max_k=30)
+            list_of_pch_out=elements, sysclk_MHz=240, perform_calib=False, max_k=50)
     else:
         from brighteyes_ffs.fcs.fcs2corr import fcs_load_and_corr_split
         dwell_us = _browser_number(values.get('dwellInput'), _browser_number(getattr(metadata, 'time_resolution', None)))
@@ -6328,6 +6329,7 @@ def browser_action_catalog():
       let pendingBinFile = null;
       let pendingBinImage = null;
       let pendingRawReload = null;
+      let sessionFilename = null;
       let pyodide = null;
       let scriptPromise = null;
       let uploadNumber = 0;
@@ -6425,6 +6427,31 @@ def browser_action_catalog():
       reloadDialog.addEventListener("cancel", function () { pendingRawReload = null; });
 
       function byId(id) { return document.getElementById(id); }
+
+      function setSessionFilename(name) {
+        sessionFilename = name;
+        const label = byId('sessionName');
+        label.textContent = name || '';
+        label.hidden = !name;
+        label.style.display = name ? 'block' : 'none';
+      }
+
+      function askSessionFilename(current) {
+        const entered = window.prompt('Enter the session file name:', current || 'brighteyes-ffs-session.ffs');
+        if (entered === null) return null;
+        let name = entered.trim();
+        if (!name || /[\\/<>:"|?*\x00-\x1f]/.test(name) || /^\.+$/.test(name)) {
+          window.alert('Enter a valid file name without path separators or special file-name characters.');
+          return null;
+        }
+        if (!/\.ffs$/i.test(name)) name += '.ffs';
+        return name;
+      }
+
+      byId('sessionName').addEventListener('dblclick', function () {
+        const name = askSessionFilename(sessionFilename);
+        if (name) setSessionFilename(name);
+      });
 
       // Allow the browser to paint the busy state before a synchronous
       // Pyodide calculation occupies the main JavaScript thread.
@@ -8086,6 +8113,11 @@ def browser_action_catalog():
             if (button.id === "newFileButton") pendingRawReload = null;
             if (handlerName === "new_session" && !window.confirm("Create a new session? Unsaved changes will be lost.")) return;
             if (handlerName === "remove_current_ffs_file" && !window.confirm("Remove the current FFS file and its analyses?")) return;
+            let saveFilename = null;
+            if (handlerName === 'save_session') {
+              saveFilename = sessionFilename || askSessionFilename(null);
+              if (!saveFilename) return;
+            }
             const payload = {
               button_id: button.id || null,
               button_label: button.textContent.trim(),
@@ -8110,7 +8142,12 @@ def browser_action_catalog():
               setStatus("starting", "Fitting the average of enabled chunks…");
               await waitForBusyPaint();
             }
-            applyResponse(await dispatchPythonHandler(handlerName, payload));
+            const response = await dispatchPythonHandler(handlerName, payload);
+            if (handlerName === 'save_session' && response && !response.error && response.download) {
+              response.download.name = saveFilename;
+              setSessionFilename(saveFilename);
+            }
+            applyResponse(response);
           } catch (error) {
               setStatus("error", "Python handler failed: " + describeError(error));
           } finally {
@@ -8119,6 +8156,15 @@ def browser_action_catalog():
           }, true);
         });
       }
+
+      document.addEventListener('keydown', function (event) {
+        if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey ||
+            event.key.toLowerCase() !== 's') return;
+        event.preventDefault();
+        if (event.repeat) return;
+        const button = document.querySelector('button[data-python-handler="save_session"]');
+        if (button && !button.disabled) button.click();
+      });
 
       function bindBrowserOnlyInputs() {
         byId('algorithm').addEventListener('change', function () {
@@ -8180,6 +8226,7 @@ def browser_action_catalog():
             setStatus("starting", "Opening the example session…");
             await waitForBusyPaint();
             const result = await callPython("browser_restore_ffs(browser_example_path)", {browser_example_path: path});
+            if (result && !result.error) setSessionFilename(null);
             h5FilesByTab.clear();
             imageUrls.forEach(function (url) { if (url) URL.revokeObjectURL(url); });
             imageUrls.length = 0;
@@ -8622,7 +8669,9 @@ def browser_action_catalog():
             await releasePreviousRawData();
             setStatus("starting", "Opening " + file.name + "…");
             await waitForBusyPaint();
-            applyResponse(await uploadFile(file, "browser_restore_ffs(browser_upload_path)"));
+            const response = await uploadFile(file, "browser_restore_ffs(browser_upload_path)");
+            if (response && !response.error) setSessionFilename(file.name);
+            applyResponse(response);
           } catch (error) {
             setStatus("error", "Could not open session: " + describeError(error));
           } finally {
