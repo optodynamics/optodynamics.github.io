@@ -7960,16 +7960,45 @@ def browser_action_catalog():
           showStoredValues("D", "diffusionCoefficientInput");
         }
         if (response.diffusion_fields) Object.entries(response.diffusion_fields).forEach(function (item) { byId(item[0]).value = item[1]; });
-        if (response.result && response.fit && response.fit_values) {
-          const firstFit = response.fit.fits ? response.fit.fits[0] : response.fit;
-          const taus = Array.isArray(response.result.tau_s[0]) ? response.result.tau_s[0] : response.result.tau_s;
-          const start = Math.max(1, Number(firstFit.start));
-          const stop = Math.min(taus.length, Number(firstFit.stop));
-          const firstTau = Number(taus[start]), lastTau = Number(taus[stop - 1]);
-          const geometry = byId("correlationCanvas").__correlationGeometry;
-          if (geometry && firstTau > 0 && lastTau > firstTau) {
-            correlationViewport = { minX: Math.log10(firstTau), maxX: Math.log10(lastTau),
-              minY: geometry.minY, maxY: geometry.maxY };
+        if (response.result && response.fit &&
+            (response.fit_values || byId('analysisSelect').value.startsWith('fit:')) &&
+            response.result.plot_type !== 'pch') {
+          // Use the fitted lag interval, then include every displayed scatter
+          // and fitted point within it, across all curves, in the y range.
+          const multi = Array.isArray(response.result.tau_s[0]);
+          const taus = multi ? response.result.tau_s : [response.result.tau_s];
+          const data = multi ? response.result.g : [response.result.g];
+          const fits = Array.isArray(response.fit.fits) ? response.fit.fits : [response.fit];
+          let minTau = Infinity, maxTau = -Infinity;
+          fits.forEach(function (fit, i) {
+            const x = taus[i] || [];
+            const start = Math.max(1, Number(fit.start) || 1);
+            const stop = Math.min(x.length, Number(fit.stop) || x.length);
+            for (let j = start; j < stop; j++) {
+              if (Number.isFinite(x[j]) && x[j] > 0) {
+                minTau = Math.min(minTau, x[j]); maxTau = Math.max(maxTau, x[j]);
+              }
+            }
+          });
+          let minY = Infinity, maxY = -Infinity;
+          taus.forEach(function (x, i) {
+            const y = data[i] || [], fitted = fits[i] && fits[i].curve || [];
+            x.forEach(function (tau, j) {
+              if (!Number.isFinite(tau) || tau < minTau || tau > maxTau) return;
+              [y[j], fitted[j]].forEach(function (value) {
+                if (typeof value === 'number' && Number.isFinite(value)) {
+                  minY = Math.min(minY, value); maxY = Math.max(maxY, value);
+                }
+              });
+            });
+          });
+          if (minTau > 0 && maxTau >= minTau && Number.isFinite(minY) && Number.isFinite(maxY)) {
+            const minX = Math.log10(minTau), maxX = Math.log10(maxTau);
+            // A small margin keeps markers at the limits from being clipped.
+            const xPadding = Math.max((maxX - minX) * 0.015, 1e-6);
+            const yPadding = Math.max((maxY - minY) * 0.04, Math.abs(minY) * 0.005, 1e-12);
+            correlationViewport = { minX: minX - xPadding, maxX: maxX + xPadding,
+              minY: minY - yPadding, maxY: maxY + yPadding };
             drawCorrelation(response.result, response.fit);
           }
         }
