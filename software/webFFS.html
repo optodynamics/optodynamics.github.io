@@ -427,7 +427,11 @@
 
     .right-sidebar .panel-body { padding: 13px 14px 15px; }
     .right-sidebar .settings-stack { min-width: 0; gap: 10px; }
-    #crossAveragingControls:not([hidden]), #crossCustomAveraging:not([hidden]) { display: grid; gap: 10px; }
+    #crossAveragingControls:not([hidden]), #crossCustomAveraging:not([hidden]), #customCorrelationControls:not([hidden]) { display: grid; gap: 10px; }
+    #correlationScheme { cursor: zoom-in; }
+    #schemeZoom { position: fixed; z-index: 1200; width: min(360px, 45vw); height: min(280px, 50vh);
+      border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+      background-color: var(--panel); background-repeat: no-repeat; pointer-events: none; }
     .right-sidebar .choice { min-width: 0; gap: 3px; padding: 9px; }
     .right-sidebar label { min-width: 0; max-width: 100%; }
     .right-sidebar .choice h3 { font-size: .84rem; }
@@ -1674,7 +1678,14 @@
                   <option value="sv_fcs">Spot-variation FCS</option>
 				  <option value="all_autocorr">All autocorrelations</option>
 				  <option value="all_cross">All cross-correlations</option>
+                  <option value="custom">Custom</option>
 				</select></label>
+
+                <div id="customCorrelationControls" hidden>
+                  <label><span>list_of_g</span><input id="customListOfG" type="text" placeholder="['central', 'x0102', 3]"></label>
+                  <label><span>list_of_g_out</span><input id="customListOfGOut" type="text" placeholder="['central', 'cross', 'det3']"></label>
+                  <label><span>averaging</span><input id="customAveraging" type="text" placeholder="None or ['0x1+1x2', '1x0+2x1']"></label>
+                </div>
 
                 <div id="crossAveragingControls" hidden>
                   <label><span>Cross-correlation averaging</span><select id="crossAveraging">
@@ -2265,6 +2276,18 @@ def _desktop_correlation_request(values):
     detector = str(values.get("detectorType") or "custom")
     if mode == "sv_fcs":
         return spot_list_of_g, spot_elements, None
+    if mode == 'custom':
+        requests = _custom_correlation_list(values.get('customListOfG'))
+        outputs = _cross_custom_list(values.get('customListOfGOut'), 'list_of_g_out')
+        averaging_input = str(values.get('customAveraging') or '').strip()
+        averaging = None if averaging_input.lower() in ('', 'none', '[]') else _cross_custom_list(averaging_input, 'averaging')
+        if averaging is None and len(requests) != len(outputs) and requests != ['crossAll']:
+            raise ValueError('list_of_g and list_of_g_out must contain the same number of entries.')
+        if averaging is not None and len(averaging) != len(outputs):
+            raise ValueError('averaging and list_of_g_out must contain the same number of entries.')
+        if len(set(outputs)) != len(outputs):
+            raise ValueError('list_of_g_out entries must be unique.')
+        return requests, outputs, averaging
     if mode == "all_autocorr":
         channels = {"custom": range(25), "prism-7x7": range(49),
                     "airyscan": range(32), "pi-imaging-pda23": range(9, 32)}
@@ -2307,6 +2330,29 @@ def _desktop_correlation_request(values):
     raise ValueError("Unsupported correlation mode: " + mode)
 
 
+def _custom_correlation_list(value):
+    """Accept desktop-style string requests and integer detector channels."""
+    import ast
+    text = str(value or '').strip()
+    if not text:
+        raise ValueError('list_of_g must not be empty.')
+    if text.startswith(('[' , '(')):
+        try:
+            items = ast.literal_eval(text)
+        except (SyntaxError, ValueError) as error:
+            raise ValueError('list_of_g must be a list of strings and/or integer channels.') from error
+        if not isinstance(items, (list, tuple)):
+            raise ValueError('list_of_g must be a list of strings and/or integer channels.')
+    else:
+        items = [item.strip() for item in text.split(',')]
+        items = [int(item) if re.fullmatch(r'\d+', item) else item for item in items]
+    if not items or any(isinstance(item, bool) or not isinstance(item, (str, int)) or
+                        (isinstance(item, str) and not item.strip()) or
+                        (isinstance(item, int) and item < 0) for item in items):
+        raise ValueError('list_of_g entries must be nonempty strings or non-negative integer channels.')
+    return [item.strip() if isinstance(item, str) else item for item in items]
+
+
 def browser_correlation_scheme(values_json):
     """Draw selected requests with the package's detector microimage plotter."""
     import io
@@ -2336,7 +2382,7 @@ def browser_correlation_scheme(values_json):
     existing = set(plt.get_fignums())
     try:
         plot_correlations_microimage(detector, shown_requests, shown_names, shown_average,
-                                     figsize=(6, 1.5 if rows == 1 else rows * 1.15))
+                                     figsize=(6, 1.8 if rows == 1 else rows * 1.15))
         new_figures = [number for number in plt.get_fignums() if number not in existing]
         if not new_figures:
             raise ValueError('The package plotting function did not create a figure.')
@@ -3937,7 +3983,7 @@ def _browser_correlation_definition(values):
     kind = str(values.get("correlationType") or "sv_fcs")
     list_of_g, elements, average = _desktop_correlation_request(values)
     mode = {"sv_fcs": "Spot-variation fcs", "all_autocorr": "All autocorrelations",
-            "all_cross": "All cross-correlations"}[kind]
+            "all_cross": "All cross-correlations", "custom": "Custom"}[kind]
     return _BrowserCorrelationDefinition(mode, elements, list_of_g, average)
 
 
@@ -5156,7 +5202,7 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
             return result
         except Exception as error:
             raise RuntimeError("The package correlation calculation failed: " + str(error)) from error
-    if values.get("correlationType") in ("all_autocorr", "all_cross"):
+    if values.get("correlationType") in ("all_autocorr", "all_cross", "custom"):
         raise ValueError("For binned time traces, choose Multipletau or Wiener-Khinchin for this correlation mode.")
     result = json.loads(calculate_correlation(
         ffs_file.browser_input_path,
@@ -6665,9 +6711,33 @@ def browser_action_catalog():
 
       let schemeTimer = null;
       let schemeGeneration = 0;
+      const schemeZoom = document.createElement('div');
+      schemeZoom.id = 'schemeZoom';
+      schemeZoom.hidden = true;
+      schemeZoom.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(schemeZoom);
+      const schemeImage = byId('correlationScheme');
+      schemeImage.addEventListener('pointermove', function (event) {
+        if (event.pointerType === 'touch' || !schemeImage.src) return;
+        const box = schemeImage.getBoundingClientRect();
+        if (!box.width || !box.height) return;
+        schemeZoom.hidden = false;
+        const zoomWidth = schemeZoom.offsetWidth, zoomHeight = schemeZoom.offsetHeight;
+        const scale = 3;
+        const x = Math.max(0, Math.min(box.width, event.clientX - box.left));
+        const y = Math.max(0, Math.min(box.height, event.clientY - box.top));
+        schemeZoom.style.backgroundImage = 'url("' + schemeImage.src + '")';
+        schemeZoom.style.backgroundSize = (box.width * scale) + 'px ' + (box.height * scale) + 'px';
+        schemeZoom.style.backgroundPosition = (zoomWidth / 2 - x * scale) + 'px ' + (zoomHeight / 2 - y * scale) + 'px';
+        const left = box.left >= zoomWidth + 12 ? box.left - zoomWidth - 12 : Math.min(window.innerWidth - zoomWidth - 8, box.right + 12);
+        schemeZoom.style.left = Math.max(8, left) + 'px';
+        schemeZoom.style.top = Math.max(8, Math.min(window.innerHeight - zoomHeight - 8, box.top)) + 'px';
+      });
+      schemeImage.addEventListener('pointerleave', function () { schemeZoom.hidden = true; });
       function scheduleCorrelationScheme() {
         const generation = ++schemeGeneration;
         clearTimeout(schemeTimer);
+        schemeZoom.hidden = true;
         byId('correlationScheme').style.display = 'none';
         byId('correlationSchemeStatus').textContent = 'Updating correlation diagram…';
         if (!pyodide) return;
@@ -6683,7 +6753,7 @@ def browser_action_catalog():
               ? 'Showing ' + scheme.shown + ' of ' + scheme.total + ' selected curves.' : '';
           } catch (error) {
             if (generation !== schemeGeneration) return;
-            byId('correlationSchemeStatus').textContent = 'Diagram unavailable: ' + describeError(error);
+            byId('correlationSchemeStatus').textContent = '';
           }
         }, 300);
       }
@@ -7255,7 +7325,7 @@ def browser_action_catalog():
         const kind = file && file.data_kind;
         const isArrival = kind === "tcspc";
         const isBinned = kind === "time_trace";
-        const allMode = ["all_autocorr", "all_cross"].includes(byId("correlationType").value);
+        const allMode = ["all_autocorr", "all_cross", "custom"].includes(byId("correlationType").value);
         Array.from(select.options).forEach(function (option) {
           // Time-tag-to-corr also supports binned spot-variation traces;
           // its browser path does not support the two all-detector modes.
@@ -7274,6 +7344,7 @@ def browser_action_catalog():
 
       function updateCrossAveragingControls() {
         const isCross = byId("correlationType").value === "all_cross";
+        byId('customCorrelationControls').hidden = byId('correlationType').value !== 'custom';
         byId("crossAveragingControls").hidden = !isCross;
         byId("crossCustomAveraging").hidden = !isCross || byId("crossAveraging").value !== "custom";
       }
@@ -8367,7 +8438,7 @@ def browser_action_catalog():
         ['detectorType', 'correlationType', 'crossAveraging'].forEach(function (id) {
           byId(id).addEventListener('change', scheduleCorrelationScheme);
         });
-        ['crossAverageList', 'crossOutputList'].forEach(function (id) {
+        ['crossAverageList', 'crossOutputList', 'customListOfG', 'customListOfGOut', 'customAveraging'].forEach(function (id) {
           byId(id).addEventListener('input', scheduleCorrelationScheme);
         });
         updateCrossAveragingControls();
