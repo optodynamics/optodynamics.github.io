@@ -74,7 +74,7 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 24px;
-      margin-bottom: 28px;
+      margin-bottom: 33px;
     }
 
     .topbar-brand { position: relative; min-width: 0; }
@@ -325,7 +325,7 @@
     .tour-card p { margin: 0 0 12px; line-height: 1.4; font-size: .82rem; }
     .tour-card .tour-actions { display: flex; gap: 8px; justify-content: flex-end; }
     .tour-card .tour-progress { color: var(--soft); font-size: .72rem; }
-    .tour-card[hidden], .tour-spotlight[hidden] { display: none; }
+    .tour-card[hidden], .tour-spotlight[hidden], #fitWeightedControl[hidden], #pchOptimizationControl[hidden] { display: none; }
 
     .tool-button,
     .tab-button,
@@ -634,7 +634,7 @@
     .panel:has(#imagePreview):hover .image-remove-button:not(:disabled),
     .image-remove-button:focus-visible { opacity: 1; pointer-events: auto; }
     .image-remove-button:hover { background: #a92f3a; }
-    #removeFileButton:not(:disabled):hover { background: #a92f3a; border-color: #a92f3a; color: white; }
+    #removeFileButton:not(:disabled):hover, #removeSelectedAnalysis:not(:disabled):hover { background: #a92f3a; border-color: #a92f3a; color: white; }
 
     .image-coordinate-preview {
       display: block;
@@ -1261,7 +1261,11 @@
       color: var(--soft);
       font-size: .72rem;
       line-height: 1.55;
+      text-align: center;
     }
+
+    #pchOptimizationControl { margin-top: 8px; }
+    #pchOptimization { font-weight: normal; }
 
     .footer a {
       color: #a9eae2;
@@ -1615,7 +1619,7 @@
         <section class="panel" aria-labelledby="saveAsHeading">
           <div class="panel-heading"><h2 id="saveAsHeading">Save as</h2></div>
           <div class="panel-body save-actions">
-            <button class="tool-button" type="button" data-python-handler="save_session">Analysis session (.ffs)</button>
+            <button class="tool-button" type="button" data-python-handler="save_session" title="Save session (Ctrl+S; ⌘+S on macOS)">Analysis session (.ffs)</button>
             <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Jupyter Notebook</button>
             <button class="tool-button" type="button" data-python-handler="plot_jupyter_notebook">Jupyter Notebook with plots</button>
             <button class="tool-button" type="button" data-python-handler="export_session_xlsx">Excel overview</button>
@@ -1780,7 +1784,8 @@
             <button id="fitUseView" class="tool-button" type="button" title="Use the lag-time limits currently visible in the correlation plot">From plot</button>
           </div>
           <div id="fitParameterFields" class="fit-parameter-list"></div>
-          <label class="check-label" title="Weight correlation points using variation between enabled chunks"><input id="fitWeighted" type="checkbox"><span>Weighted fit</span></label>
+          <label id="fitWeightedControl" class="check-label" title="Weight correlation points using variation between enabled chunks"><input id="fitWeighted" type="checkbox"><span>Weighted fit</span></label>
+          <label id="pchOptimizationControl" hidden><span>Optimization</span><select id="pchOptimization"><option value="absolute">Absolute errors</option><option value="relative" selected>Relative errors</option></select></label>
           <p id="fitSummary" class="timing-note" hidden></p>
           <div class="placeholder-actions"><button class="tool-button" type="button" data-python-handler="overwritefit">Overwrite fit</button><button id="newFitButton" class="tool-button" type="button" data-python-handler="newfit">New fit</button></div>
         </div>
@@ -1791,12 +1796,12 @@
           <div class="diffusion-fields">
             <label for="beamWaistInput">Beam waist (nm)</label><input id="beamWaistInput" type="text" value="250, 300, 350">
             <label for="diffusionCoefficientInput">D (µm²/s)</label><input id="diffusionCoefficientInput" type="text" value="1">
-            <select id="keepFixedInput" aria-label="Fixed diffusion parameter"><option>Keep D fixed</option><option>Keep w0 fixed</option></select>
+            <select id="keepFixedInput" aria-label="Fixed diffusion parameter"><option>Keep w0 fixed</option><option>Keep D fixed</option></select>
             <button id="diffusionLawUpdate" class="tool-button" type="button" data-python-handler="update_diffLaw">Update</button>
             <label for="temperatureInput">Temperature (K)</label><input id="temperatureInput" type="text" value="293">
             <label for="viscosityInput">Viscosity (Pa.s)</label><input id="viscosityInput" type="text" value="0.001">
             <label for="diameterInput">Diameter (nm)</label><input id="diameterInput" type="text" value="10, 10, 10">
-            <select id="diameterCalculationInput" aria-label="Calculate diffusion property"><option>Calculate diameter</option><option>Calculate viscosity</option><option selected>Calculate temperature</option></select>
+            <select id="diameterCalculationInput" aria-label="Calculate diffusion property"><option selected>Calculate diameter</option><option>Calculate viscosity</option><option>Calculate temperature</option></select>
             <button id="diameterUpdate" class="tool-button" type="button" data-python-handler="update_difflaw_diameter">Update</button>
           </div>
           <p id="diffusionSummary" class="timing-note">Fit a correlation to calculate a diffusion estimate.</p>
@@ -1813,7 +1818,7 @@
       <section class="panel" aria-labelledby="analysisTreeHeading">
         <div class="panel-heading"><h2 id="analysisTreeHeading">Correlations</h2></div>
         <div class="panel-body">
-          <div class="analysis-tree-row"><select id="analysisSelect" aria-label="Active analysis"><option value="0">Correlation 1</option></select><button id="removeSelectedAnalysis" class="tool-button" type="button" hidden>Remove current correlation</button></div>
+          <div class="analysis-tree-row"><select id="analysisSelect" aria-label="Active analysis"><option value="0">Correlation 1</option></select><button id="removeSelectedAnalysis" class="tool-button" type="button" title="Remove current correlation" aria-label="Remove current correlation" hidden><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>
           <!-- TODO(web-parity): show fitted curves as nested items once all desktop fit models are exposed in the browser. -->
         </div>
       </section>
@@ -1826,6 +1831,7 @@
             <label class="check-label"><input id="chunkOnInput" type="checkbox" checked><span>Chunk on</span></label>
             <button class="tool-button" type="button" data-python-handler="filter_out_bad_chunks">Filter bad chunks</button>
             <button class="tool-button" type="button" data-python-handler="turn_on_all_chunks">Use all chunks</button>
+            <button id="enterChunkList" class="tool-button" type="button">Enter chunk list</button>
           </div>
         </div>
       </section>
@@ -1883,7 +1889,7 @@
     </div>
 
     <footer class="footer">
-      Uses <a href="https://pypi.org/project/brighteyes-ffs/" target="_blank" rel="noopener">BrightEyes-FFS</a> <span id="packageVersion">(version loading…)</span> (GPL-3.0-or-later) and Pyodide. Serve this single file over HTTP(S) for the most reliable browser-module and WebAssembly loading.
+      Uses <a href="https://pypi.org/project/brighteyes-ffs/" target="_blank" rel="noopener">BrightEyes-FFS</a> <span id="packageVersion">(version loading…)</span> (GPL-3.0-or-later) and Pyodide. Help from an LLM was used to create this html file. Developed by the labs of <a href="https://vicidominilab.github.io/" target="_blank" rel="noopener">Vicidomini</a> and <a href="https://eslenders.github.io/" target="_blank" rel="noopener">Slenders</a>. Cite our <a href="https://iopscience.iop.org/article/10.1088/2515-7647/ae769d/meta" target="_blank" rel="noopener">JPhys Photonics paper</a> if you used this software.
     </footer>
   </main>
 
@@ -2312,7 +2318,7 @@ def _desktop_correlation_request(values):
         if averaging_mode == 'none':
             channels = {'custom': range(25), 'prism-7x7': range(49),
                         'airyscan': range(32), 'pi-imaging-pda23': range(9, 32)}[detector]
-            return ['crossAll'], [f'x{i:02d}{j:02d}' for i in channels for j in channels], None
+            return ['crossAll'], [f'det{i}x{j}' for i in channels for j in channels], None
         if averaging_mode == 'custom':
             averages = _cross_custom_list(values.get('crossAverageList'), 'Averaging list')
             outputs = _cross_custom_list(values.get('crossOutputList'), 'Output names')
@@ -2378,7 +2384,13 @@ def browser_correlation_scheme(values_json):
     # Large all-pairs requests can contain thousands of panels, so show an
     # accurately labelled sample rather than exhausting browser memory.
     if requests and requests[0] == 'crossAll' and averaging is None:
-        shown_requests, shown_average = names[:limit], None
+        # The plotting API uses xNNNN pair syntax, while the output labels
+        # used by the calculation are named detIxJ.
+        shown_requests = []
+        for name in names[:limit]:
+            pair = re.fullmatch(r'det(\d+)x(\d+)', str(name))
+            shown_requests.append(f'x{int(pair.group(1)):02d}{int(pair.group(2)):02d}' if pair else name)
+        shown_average = None
     elif averaging is not None:
         shown_requests, shown_average = requests, averaging[:limit]
     else:
@@ -3798,6 +3810,9 @@ def _fit_browser_pch(payload):
     """Call the desktop PCH fitter and retain its native parameter layout."""
     from brighteyes_ffs.pch.pch_fit import fit_pch
     model = _FIT_MODELS[payload['model']]
+    optimization = str(payload.get('optimization', 'relative')).lower()
+    if optimization not in ('absolute', 'relative'):
+        raise ValueError('PCH optimization must be absolute or relative.')
     xs, ys = payload['tau_s'], payload['g']
     multiple = bool(xs and isinstance(xs[0], list))
     xs, ys = (xs, ys) if multiple else ([xs], [ys])
@@ -3827,29 +3842,22 @@ def _fit_browser_pch(payload):
         raise ValueError('PSF dimensions and N bins must be positive; N bins must be an integer.')
     if model['global_fit'] and np.any(full[-1] != full[-1, 0]):
         raise ValueError('A global PCH fit requires the same N bins for each curve.')
-    if payload.get('weighted') and model['global_fit']:
-        raise ValueError('The desktop global PCH fit uses unweighted fitting; turn off weighted fit.')
     fitted, residuals = [], []
+    global_flags = []
     if model['global_fit']:
         psf = full[-3:-1, :].T.ravel().tolist()
         global_flags = [True, True, False, False, False, True, False]
         outcome = fit_pch(hist.copy(), fitflags[:nparam].copy(), full[:nparam].copy(), psf,
                           lower[:nparam].copy(), upper[:nparam].copy(), n_bins=int(full[-1, 0]),
-                          global_param=global_flags, fitfun=model['function'], minimization='relative')
+                          global_param=global_flags, fitfun=model['function'], minimization=optimization)
         full[:nparam] = outcome.x
         fitted = [full[:, i].copy() for i in range(len(xs))]
         residuals = [np.asarray(outcome.fun)[:, i] for i in range(len(xs))]
     else:
         for i in range(len(xs)):
-            weights = payload.get('weights')
-            if weights is not None:
-                weights = weights[i] if multiple else weights
-                weights = np.asarray(weights[:stop], dtype=float)
-            else:
-                weights = 1
             outcome = fit_pch(hist[:, i].copy(), fitflags[:nparam].copy(), full[:nparam, i].copy(),
                               full[-3:-1, i].tolist(), lower[:nparam].copy(), upper[:nparam].copy(),
-                              weights=weights, n_bins=int(full[-1, i]), fitfun=model['function'], minimization='relative')
+                              weights=1, n_bins=int(full[-1, i]), fitfun=model['function'], minimization=optimization)
             full[:nparam, i] = outcome.x
             fitted.append(full[:, i].copy()); residuals.append(np.asarray(outcome.fun))
     records = []
@@ -3858,18 +3866,18 @@ def _fit_browser_pch(payload):
         observed = hist[:, i]
         # Relative fitting deliberately ignores zero-frequency bins; there is
         # no meaningful fitted value recoverable from those residuals.
-        curve = [float(observed[j] - residual[j]) if observed[j] > 0 else None for j in range(stop)] + [None] * (len(xs[i]) - stop)
+        curve = [float(observed[j] - residual[j]) if observed[j] > 0 or optimization == 'absolute' else None for j in range(stop)] + [None] * (len(xs[i]) - stop)
         label = labels[i] if isinstance(labels, list) else labels
         records.append({'model': model['label'], 'model_key': payload['model'], 'data': str(label or ''),
             'parameters': {name: float(vector[idx]) for name, idx in zip(model['params'], indices)},
             'parameter_names': model['params'], 'startvalues': vector.tolist(),
-            'fitarray': fitflags.tolist() + [int(bool(payload.get('weighted')))],
+            'fitarray': fitflags.tolist() + [0], 'optimization': optimization,
             'minbound': lower.tolist(), 'maxbound': upper.tolist(), 'param_factors10': [1] * len(vector),
             'paramidx': indices.tolist(), 'fitresult': residual.tolist(), 'residuals': residual.tolist(),
             'curve': curve, 'curve_full': curve, 'start': 0, 'stop': stop, 'fitrange': [0, stop],
             'tauD_s': None, 'rmse': float(np.sqrt(np.mean(residual ** 2)))})
     if multiple:
-        return json.dumps({'model': model['label'], 'model_key': payload['model'], 'global_fit': model['global_fit'], 'fits': records}, allow_nan=False)
+        return json.dumps({'model': model['label'], 'model_key': payload['model'], 'global_fit': model['global_fit'], 'global_param': global_flags, 'optimization': optimization, 'fits': records}, allow_nan=False)
     return json.dumps(records[0], allow_nan=False)
 
 
@@ -3943,6 +3951,7 @@ _BROWSER_ACTIONS = {
     "copy_chunks_off_clipboard": {"package_api": "FFScorr.settings.chunks_off", "adapter": "copy_chunks_off_clipboard"},
     "paste_chunks_off_clipboard": {"package_api": "FFScorr.settings.chunks_off", "adapter": "paste_chunks_off_clipboard"},
     "turn_on_all_chunks": {"package_api": "FFScorr.settings.chunks_off", "adapter": "turn_on_all_chunks"},
+    "set_good_chunk_list": {"package_api": "FFScorr.settings.chunks_off", "adapter": "set_good_chunk_list"},
     "show_fingerprint": {"package_api": "plot_fingerprint_airyscan / plot_fingerprint_luminosa", "adapter": "show_fingerprint"},
     "show_x_print": {"package_api": "FFScorr / fcs_fit", "adapter": "show_x_print"},
 
@@ -4319,7 +4328,8 @@ def _browser_fit_payload(values, result):
         "start": max(1, _browser_int(values.get("fitStart"), 1)),
         "stop": _browser_int(values.get("fitStop"), 0),
         "model": model_key,
-        "weighted": bool(values.get('fitWeighted', False)),
+        "weighted": bool(values.get('fitWeighted', False)) if not model_key.startswith('pch-') else False,
+        "optimization": str(values.get('pchOptimization') or 'relative').lower(),
         "data": result.get("trace_labels", [""]) if number_of_curves > 1 else (result.get("trace_labels") or [""])[0],
         "initial": initial[0] if number_of_curves == 1 else initial,
         "fittable": [bool(values.get("fitParamFit" + str(index), False))
@@ -5129,6 +5139,27 @@ def paste_chunks_off_clipboard(payload=None):
     )
 
 
+def set_good_chunk_list(payload=None):
+    ffs_file = _browser_current_file()
+    source = getattr(ffs_file, 'browser_chunk_source', None) if ffs_file is not None else None
+    chunks = source.get('chunks', []) if isinstance(source, dict) else []
+    count = len(chunks[0]) if chunks and chunks[0] else 0
+    if not count:
+        return _browser_response('Calculate a correlation with chunks first.')
+    indices = (payload or {}).get('good_chunks')
+    if not isinstance(indices, list) or not indices or any(
+            isinstance(index, bool) or not isinstance(index, int) or index < 0 or index >= count
+            for index in indices):
+        raise ValueError('Enter at least one valid chunk number between 0 and ' + str(count - 1) + '.')
+    previous = list(getattr(ffs_file, 'browser_active_chunks', None) or [True] * count)
+    if len(previous) != count:
+        previous = [True] * count
+    chosen = set(indices)
+    ffs_file.browser_active_chunks = [index in chosen for index in range(count)]
+    return _browser_refit_after_chunk_change(payload, previous,
+        message='Updated the good chunks from the entered list.')
+
+
 def turn_on_all_chunks(payload=None):
     ffs_file = _browser_current_file()
     source = getattr(ffs_file, "browser_chunk_source", None) if ffs_file is not None else None
@@ -5640,7 +5671,8 @@ def browser_restore_ffs(input_path):
                             tau = np.asarray(taus[curve_index], dtype=float)
                             g = np.asarray(gs[curve_index], dtype=float)
                             start, stop = [int(v) for v in item.fitrange]
-                            start, stop = max(1, start), min(len(tau), stop)
+                            is_pch_fit = str(item.fitfunction_label).lower().startswith('pch')
+                            start, stop = max(0 if is_pch_fit else 1, start), min(len(tau), stop)
                             residual = np.asarray(item.fitresult, dtype=float).ravel()
                             length = min(max(0, stop - start), len(residual))
                             model_key = next((key for key, model in _FIT_MODELS.items() if model["label"] == str(item.fitfunction_label)), None)
@@ -5665,6 +5697,12 @@ def browser_restore_ffs(input_path):
                         if curves:
                             record = curves[0] if len(curves) == 1 else {"model": curves[0]["model"], "fits": curves}
                             fit_group = group.get(f"analysis{analysis_index}/fits/fit{fit_index}") if group is not None else None
+                            if str(model_key or '').startswith('pch-'):
+                                optimization = fit_group.attrs.get('browser_pch_optimization', 'relative') if fit_group is not None else 'relative'
+                                if isinstance(optimization, bytes): optimization = optimization.decode('utf-8')
+                                optimization = optimization if optimization in ('absolute', 'relative') else 'relative'
+                                for curve in curves: curve['optimization'] = optimization
+                                record['optimization'] = optimization
                             if fit_group is not None and bool(fit_group.attrs.get('browser_global_fit', False)):
                                 record['global_fit'] = True
                                 record['global_param'] = np.asarray(fit_group.attrs['browser_global_param'], dtype=int).tolist()
@@ -5706,6 +5744,9 @@ def save_session(payload=None):
                     for analysis_index, analysis in enumerate(item.analysis_list):
                         for fit_index, record in enumerate(getattr(analysis, 'browser_fits', []) or []):
                             fit_group = group.get(f'analysis{analysis_index}/fits/fit{fit_index}')
+                            curves = _browser_fit_curves(record)
+                            if fit_group is not None and curves and str(curves[0].get('model_key') or '').startswith('pch-'):
+                                fit_group.attrs['browser_pch_optimization'] = curves[0].get('optimization', 'relative')
                             if fit_group is not None and record.get('global_fit'):
                                 fit_group.attrs['browser_global_fit'] = True
                                 fit_group.attrs['browser_global_param'] = np.asarray(record['global_param'], dtype=np.uint8)
@@ -5812,33 +5853,87 @@ def remove_current_image(payload=None):
     return _browser_response('Removed the current image.', clear_result=True, clear_diffusion_law=True)
 
 
-def copy_current_correlation(payload=None):
-    global _browser_correlation_clipboard
+def _browser_duplicate_correlation(use_fit=False):
+    """Create an independent analysis, retaining desktop-style chunk data."""
+    import copy
     ffs_file = _browser_current_file()
-    result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
-    if not isinstance(result, dict):
-        return _browser_response("Calculate a correlation before copying it.")
-    _browser_correlation_clipboard = json.loads(json.dumps(result))
-    return _browser_response("Copied the current correlation in Python.", result=result)
+    analysis = _browser_active_analysis(ffs_file) if ffs_file is not None else None
+    source = getattr(analysis, 'browser_chunk_source', None) if analysis is not None else None
+    if not isinstance(source, dict) or not source.get('chunks'):
+        return _browser_response('Calculate a correlation with chunks before copying it.')
+    result = copy.deepcopy(source)
+    chunks = result['chunks']
+    labels = result.get('trace_labels') or []
+    if not chunks or any(not trace for trace in chunks) or len(labels) != len(chunks):
+        raise ValueError('The current correlation is missing labelled chunk data.')
+    count = len(chunks[0])
+    if any(len(trace) != count for trace in chunks):
+        raise ValueError('The correlation curves have different numbers of chunks.')
+    if use_fit:
+        fit_index = getattr(ffs_file, 'browser_active_fit_index', None)
+        fits = list(getattr(analysis, 'browser_fits', []) or [])
+        if fit_index is None or not 0 <= int(fit_index) < len(fits):
+            return _browser_response('Select a fit in the correlations tree first.')
+        curves = _browser_fit_curves(fits[int(fit_index)])
+        if len(curves) != len(chunks):
+            raise ValueError('A fitted curve is required for every correlation trace.')
+        by_name = {str(curve.get('data')): curve for curve in curves if curve.get('data')}
+        fitted_chunks = []
+        for index, label in enumerate(labels):
+            curve = by_name.get(str(label), curves[index] if not by_name else None)
+            if curve is None:
+                raise ValueError('The selected fit does not match the correlation curves.')
+            x = np.asarray(chunks[index][0], dtype=float)[:, 0]
+            y = curve.get('curve') or curve.get('curve_full') or []
+            start = max(0, int(curve.get('start', 0)))
+            stop = min(len(x), len(y), int(curve.get('stop', len(x)) or len(x)))
+            if stop <= start:
+                raise ValueError('The selected fit has an empty fit range.')
+            selected = y[start:stop]
+            if any(value is None or not math.isfinite(float(value)) for value in selected):
+                raise ValueError('The selected fit contains missing values within its fit range and cannot be copied as data.')
+            fitted = np.column_stack((x[start:stop], np.asarray(selected, dtype=float))).tolist()
+            fitted_chunks.append([copy.deepcopy(fitted) for _ in range(count)])
+        result['chunks'] = fitted_chunks
+        result['mode'] = 'Fit used as experimental data'
+    # Work on a deep copy before changing the live session, so failures cannot
+    # mutate the original analysis, its fits, chunks, or native correlations.
+    duplicate = copy.deepcopy(analysis)
+    duplicate.mode = str(getattr(analysis, 'mode', 'Correlation')) + (' (fit as data)' if use_fit else ' (copy)')
+    duplicate.fits = []
+    duplicate.active_fit = None
+    duplicate.browser_fit = None
+    duplicate.browser_fits = []
+    duplicate.settings.chunks_off = np.ones(count, dtype=int)
+    if use_fit:
+        from brighteyes_ffs.fcs.fcs2corr import Correlations
+        native = Correlations()
+        native.list_of_g_out = list(labels)
+        for label, trace in zip(labels, result['chunks']):
+            native.add_corr_chunks(str(label), np.asarray(trace, dtype=float))
+        duplicate.corrs = duplicate.browser_native_corrs = native
+    if getattr(duplicate, 'corrs', None) is not None:
+        duplicate.corrs.good_chunks = list(range(count))
+    duplicate.browser_chunk_source = duplicate.browser_result = result
+    ffs_file.analysis_list.append(duplicate)
+    ffs_file.active_analysis = len(ffs_file.analysis_list) - 1
+    ffs_file.browser_result = ffs_file.browser_chunk_source = result
+    ffs_file.browser_fit = None
+    ffs_file.browser_active_fit_index = None
+    ffs_file.browser_active_chunks = [True] * count
+    ffs_file.browser_selected_chunk = 0
+    response = json.loads(show_chunks_corr_change({'values': {'showChunksCorrSelect': 'average'}}))
+    response.update(message='Created a new correlation from the selected fit.' if use_fit else 'Copied the correlation with all chunks enabled.',
+                    show_chunks_mode='average', clear_diffusion_law=True, view=_browser_view())
+    return json.dumps(response, allow_nan=False, default=_browser_json_default)
+
+
+def copy_current_correlation(payload=None):
+    return _browser_duplicate_correlation()
 
 
 def use_current_fit_as_experimental_data(payload=None):
-    ffs_file = _browser_current_file()
-    result = getattr(ffs_file, "browser_result", None) if ffs_file is not None else None
-    fit = getattr(ffs_file, "browser_fit", None) if ffs_file is not None else None
-    if not isinstance(result, dict) or not isinstance(fit, dict):
-        return _browser_response("Create a fit before using it as experimental data.")
-    curves = _browser_fit_curves(fit)
-    multiple = bool(result.get("tau_s") and isinstance(result["tau_s"][0], list))
-    if multiple:
-        if len(curves) != len(result["tau_s"]):
-            return _browser_response("Fit every correlation trace before using it as data.")
-        result["g"] = [curve.get("curve_full", curve["curve"]) for curve in curves]
-    else:
-        result["g"] = curves[0].get("curve_full", curves[0]["curve"])
-    result["mode"] = "Fit used as experimental data"
-    ffs_file.browser_result = result
-    return _browser_response("Used the current fit as experimental data.", result=result)
+    return _browser_duplicate_correlation(use_fit=True)
 
 
 def filter_out_bad_chunks(payload=None):
@@ -5994,13 +6089,14 @@ def _browser_refit_after_chunk_change(payload, previous_active, message=None):
                         raise ValueError('A saved fit is missing a finite parameter value.')
                     values_for_curve.append(float(value))
                 initials.append(values_for_curve)
-                flags.append(([bool(fitarray[index]) for index in indices], bool(fitarray[-1])))
+                flags.append(([bool(fitarray[index]) for index in indices], bool(fitarray[-1]) if not key.startswith('pch-') else False))
             if any(flag != flags[0] for flag in flags[1:]):
                 raise ValueError('Fit checkbox or weighting settings differ across curves; refit manually first.')
             multiple = len(curves) > 1
             fit_payload = {'model': key, 'tau_s': result['tau_s'], 'g': result['g'],
                 'data': labels if multiple else labels[0], 'initial': initials if multiple else initials[0],
                 'fittable': flags[0][0], 'weighted': flags[0][1],
+                'optimization': first.get('optimization', record.get('optimization', 'relative')),
                 'start': first.get('start', first.get('fitrange', [1, 0])[0]),
                 'stop': first.get('stop', first.get('fitrange', [1, 0])[1])}
             if fit_payload['weighted']:
@@ -6769,7 +6865,12 @@ def browser_action_catalog():
       function parsePythonResponse(raw) {
         if (raw === undefined || raw === null) return {};
         if (typeof raw === "object") return raw;
-        return JSON.parse(String(raw));
+        const text = String(raw);
+        try { return JSON.parse(text); }
+        catch (error) {
+          throw new Error('Python returned an invalid response (' + error.message + '). ' +
+            'Response begins: ' + JSON.stringify(text.slice(0, 160)));
+        }
       }
 
       function describeError(error) {
@@ -6801,19 +6902,31 @@ def browser_action_catalog():
         return amount.toFixed(amount >= 10 ? 0 : 1) + " " + units[unit];
       }
 
-      async function dispatchPythonHandler(handlerName, payload) {
-        if (!pyodide) throw new Error("Browser Python is still starting.");
-        pyodide.globals.set("browser_handler_name", handlerName);
-        pyodide.globals.set("browser_handler_payload_json", JSON.stringify(payload));
-        return parsePythonResponse(await pyodide.runPythonAsync(
-          "dispatch_main_handler(browser_handler_name, browser_handler_payload_json)"
-        ));
+      // All bridge calls share one Pyodide interpreter and its globals.
+      // Queue the globals assignment together with execution so overlapping
+      // UI actions and delayed diagram previews cannot exchange arguments or
+      // interfere with another in-flight Python response.
+      let pythonBridgeQueue = Promise.resolve();
+      function runPythonBridge(expression, values) {
+        const task = pythonBridgeQueue.then(async function () {
+          if (!pyodide) throw new Error("Browser Python is still starting.");
+          Object.entries(values || {}).forEach(function (item) { pyodide.globals.set(item[0], item[1]); });
+          return parsePythonResponse(await pyodide.runPythonAsync(expression));
+        });
+        // A failed action must not prevent later actions from running.
+        pythonBridgeQueue = task.catch(function () {});
+        return task;
       }
 
-      async function callPython(expression, values) {
-        if (!pyodide) throw new Error("Browser Python is still starting.");
-        Object.entries(values || {}).forEach(function (item) { pyodide.globals.set(item[0], item[1]); });
-        return parsePythonResponse(await pyodide.runPythonAsync(expression));
+      function dispatchPythonHandler(handlerName, payload) {
+        return runPythonBridge('dispatch_main_handler(browser_handler_name, browser_handler_payload_json)', {
+          browser_handler_name: handlerName,
+          browser_handler_payload_json: JSON.stringify(payload)
+        });
+      }
+
+      function callPython(expression, values) {
+        return runPythonBridge(expression, values);
       }
 
       function activeFileKey(view) {
@@ -7071,6 +7184,9 @@ def browser_action_catalog():
         if (!model) return;
         byId("fitWeighted").checked = false;
         byId("fitWeighted").indeterminate = false;
+        byId("fitWeightedControl").hidden = model.plot_type === 'pch';
+        byId("pchOptimizationControl").hidden = model.plot_type !== 'pch';
+        byId("pchOptimization").value = 'relative';
         const fields = byId("fitParameterFields");
         fields.replaceChildren();
         model.params.forEach(function (name, index) {
@@ -7105,6 +7221,17 @@ def browser_action_catalog():
           : "";
       }
 
+      function resetFitControls(result) {
+        const isPch = result ? result.plot_type === 'pch' : byId('fitModel').dataset.plotType === 'pch';
+        const select = byId('fitModel');
+        select.value = isPch ? 'pch-1' : 'free-diffusion-1';
+        select.dataset.plotType = isPch ? 'pch' : 'correlation';
+        byId('fitStart').min = isPch ? '0' : '1';
+        byId('fitStart').value = isPch ? '0' : '1';
+        byId('fitStop').value = '0';
+        renderFitModel(select.value);
+      }
+
       async function initializeFitModels() {
         fitModels = await callPython("browser_fit_model_catalog()");
         const select = byId("fitModel");
@@ -7135,6 +7262,9 @@ def browser_action_catalog():
         const model = fitModels[key];
         byId("fitModel").value = key;
         renderFitModel(key);
+        if (model.plot_type === 'pch') {
+          byId('pchOptimization').value = first.optimization || fit.optimization || 'relative';
+        }
         const weightStates = curves.map(function (curve) {
           return Array.isArray(curve.fitarray) && curve.fitarray.length ? Boolean(curve.fitarray[curve.fitarray.length - 1]) : null;
         });
@@ -7362,7 +7492,8 @@ def browser_action_catalog():
         const button = byId('removeSelectedAnalysis');
         const fit = select.value.startsWith('fit:');
         button.hidden = select.disabled || !/^(fit|corr):/.test(select.value);
-        button.textContent = fit ? 'Remove current fit' : 'Remove current correlation';
+        button.title = fit ? 'Remove current fit' : 'Remove current correlation';
+        button.setAttribute('aria-label', button.title);
       }
 
       function renderView(view) {
@@ -7720,21 +7851,32 @@ def browser_action_catalog():
           if (Number.isFinite(v) && v >= 0 && Number.isFinite(y) && y > 0) points.push([v, y]);
         }); });
         if (!points.length) return;
-        let maxX = 1, minY = 1;
+        let minX = 0, maxX = 1, minY = 1;
         points.forEach(function (p) { maxX = Math.max(maxX, p[0]); minY = Math.min(minY, p[1]); });
-        const minLog = Math.floor(Math.log10(minY)), maxLog = 0;
-        const logRange = Math.max(1, maxLog - minLog);
+        let minLog = Math.min(-1, Math.floor(Math.log10(minY))), maxLog = 0;
+        if (correlationViewport) {
+          minX = correlationViewport.minX; maxX = correlationViewport.maxX;
+          minLog = correlationViewport.minY; maxLog = correlationViewport.maxY;
+        }
+        const xRange = Math.max(maxX - minX, 1e-12), logRange = Math.max(maxLog - minLog, 1e-12);
         const left = 66, right = 18, top = 35, bottom = 52;
         const width = target.width - left - right, height = target.height - top - bottom;
-        const xAt = function (x) { return left + x * width / maxX; };
+        byId('correlationCanvas').__correlationGeometry = { left: left, right: right, top: top,
+          mainBottom: top + height, width: target.width, minX: minX, maxX: maxX,
+          minY: minLog, maxY: maxLog, plotType: 'pch' };
+        const xAt = function (x) { return left + (x - minX) * width / xRange; };
         const yAt = function (y) { return top + (maxLog - Math.log10(y)) * height / logRange; };
         ctx.font = '10px system-ui'; ctx.strokeStyle = palette.axis; ctx.fillStyle = palette.label;
         ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, top + height); ctx.lineTo(left + width, top + height); ctx.stroke();
         ctx.textAlign = 'center';
-        for (let i = 0; i <= 4; i++) { const x = maxX * i / 4; ctx.fillText(Number(x.toPrecision(3)), xAt(x), top + height + 17); }
+        const xTickStep = Math.max(1, Math.ceil(xRange / 5));
+        for (let x = Math.ceil(minX / xTickStep) * xTickStep; x <= maxX; x += xTickStep) {
+          ctx.beginPath(); ctx.moveTo(xAt(x), top + height); ctx.lineTo(xAt(x), top + height + 5); ctx.stroke();
+          ctx.fillText(String(x), xAt(x), top + height + 17);
+        }
         ctx.textAlign = 'right';
         const tickStep = Math.max(1, Math.ceil(logRange / 6));
-        for (let k = minLog; k <= 0; k += tickStep) { const y = yAt(Math.pow(10, k)); ctx.fillText('1e' + k, left - 6, y + 3); }
+        for (let k = Math.ceil(minLog / tickStep) * tickStep; k <= maxLog; k += tickStep) { const y = yAt(Math.pow(10, k)); ctx.fillText('1e' + k, left - 6, y + 3); }
         ctx.textAlign = 'center'; ctx.fillText('Counts per bin', left + width / 2, target.height - 10);
         ctx.save(); ctx.translate(14, top + height / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('Relative frequency', 0, 0); ctx.restore();
         const colors = ['#4de0d0', '#b39cff', '#ffb56b', '#70e49b', '#ff7d8a'];
@@ -8116,15 +8258,17 @@ def browser_action_catalog():
           context.fillText(y.toPrecision(3), left-8, yAt(y));
         });
         context.strokeStyle = palette.axis; context.beginPath(); context.moveTo(left, top); context.lineTo(left, target.height-bottom); context.lineTo(target.width-right,target.height-bottom); context.stroke();
-        const lineColor = "#ffb56b";
+        const lineColor = document.documentElement.dataset.theme === 'light' ? '#000000' : '#ffffff';
         if (slope !== null) {
+          context.save(); context.setLineDash([2, 3]);
           context.strokeStyle = lineColor; context.lineWidth = 1.5; context.beginPath();
           context.moveTo(xAt(0), yAt(intercept)); context.lineTo(xAt(maxX), yAt(lineEnd)); context.stroke();
+          context.restore();
         }
         const colors = ["#4de0d0", "#b39cff", "#ffb56b", "#70e49b", "#ff7d8a"];
         valid.forEach(function (pair, index) { context.fillStyle=colors[index % colors.length]; context.beginPath(); context.arc(xAt(pair[0]), yAt(pair[1]), 4, 0, 2*Math.PI); context.fill(); });
         context.font = "10px system-ui"; context.textAlign = "left"; context.textBaseline = "middle";
-        context.strokeStyle = lineColor; context.lineWidth = 1.5; context.beginPath(); context.moveTo(left, 18); context.lineTo(left + 16, 18); context.stroke();
+        context.save(); context.setLineDash([2, 3]); context.strokeStyle = lineColor; context.lineWidth = 1.5; context.beginPath(); context.moveTo(left, 18); context.lineTo(left + 16, 18); context.stroke(); context.restore();
         context.fillStyle = palette.label;
         const equation = slope === null
           ? "Linear fit requires at least two different w₀² values"
@@ -8182,9 +8326,7 @@ def browser_action_catalog():
         if (response.image_navigation) {
           // Never leave another image's fit and diffusion parameters visible.
           if (!response.fit) {
-            renderFitModel(byId('fitModel').value);
-            byId('fitStart').value = byId('fitModel').dataset.plotType === 'pch' ? '0' : '1';
-            byId('fitStop').value = '0';
+            resetFitControls(response.result);
           }
           ['beamWaistInput', 'diffusionCoefficientInput', 'diameterInput'].forEach(function (id) {
             byId(id).value = byId(id).defaultValue;
@@ -8407,6 +8549,9 @@ def browser_action_catalog():
               setSessionFilename(saveFilename);
             }
             applyResponse(response);
+            if (handlerName === 'add_corr_and_calc' && response && !response.error && response.result) {
+              resetFitControls(response.result);
+            }
           } catch (error) {
               setStatus("error", "Python handler failed: " + describeError(error));
           } finally {
@@ -8426,6 +8571,30 @@ def browser_action_catalog():
       });
 
       function bindBrowserOnlyInputs() {
+        byId('enterChunkList').addEventListener('click', async function () {
+          const chunk = lastDrawnPreview && lastDrawnPreview.chunk;
+          const active = chunk && chunk.enabled_chunks;
+          if (!Array.isArray(active) || !active.length) {
+            setStatus('error', 'Calculate a correlation with chunks first.'); return;
+          }
+          const current = active.map(function (on, i) { return on ? i : null; })
+            .filter(function (i) { return i !== null; }).join(', ');
+          const entered = window.prompt('Enter good chunk numbers, separated by commas (0–' + (active.length - 1) + '):', current);
+          if (entered === null) return;
+          const text = entered.trim().replace(/^\[/, '').replace(/\]$/, '');
+          if (!/^\s*\d+\s*(,\s*\d+\s*)*$/.test(text)) {
+            setStatus('error', 'Enter at least one non-negative chunk number, separated by commas.'); return;
+          }
+          const indices = text.split(',').map(function (item) { return Number(item.trim()); });
+          if (indices.some(function (index) { return !Number.isSafeInteger(index) || index >= active.length; })) {
+            setStatus('error', 'Chunk numbers must be between 0 and ' + (active.length - 1) + '.'); return;
+          }
+          try {
+            setStatus('starting', 'Updating good chunks and recalculating fits…');
+            await waitForBusyPaint();
+            applyResponse(await dispatchPythonHandler('set_good_chunk_list', {good_chunks: indices, values: formValues()}));
+          } catch (error) { setStatus('error', 'Could not update the chunk list: ' + describeError(error)); }
+        });
         byId('algorithm').addEventListener('change', function () {
           updateAlgorithmChoices(activeView && activeView.active_file);
         });
@@ -8645,6 +8814,9 @@ def browser_action_catalog():
             setStatus("error", "Calculate a correlation before selecting a fit range."); return;
           }
           const result = JSON.parse(correlationCanvas.dataset.lastResult);
+          if (result.plot_type === 'pch') {
+            setStatus('error', 'PCH fitting starts at zero counts; set the stop point directly.'); return;
+          }
           const taus = Array.isArray(result.tau_s[0]) ? result.tau_s[0] : result.tau_s;
           const indices = [];
           for (let i = 1; i < taus.length; i += 1) {
@@ -8736,12 +8908,17 @@ def browser_action_catalog():
           updateAnalysisRemoveButton();
           try {
             setStatus("starting", "Showing selected correlation…");
-            applyResponse(await dispatchPythonHandler("show_analysis", {
+            const selection = byId('analysisSelect').value;
+            const response = await dispatchPythonHandler("show_analysis", {
               button_id: "analysisSelect",
               button_label: "Active analysis",
               button_data: {},
               values: formValues()
-            }));
+            });
+            applyResponse(response);
+            if (selection.startsWith('corr:') && response && !response.error && (response.result || response.clear_result)) {
+              resetFitControls(response.result);
+            }
           } catch (error) {
             setStatus("error", "Could not show the selected correlation: " + describeError(error));
           }
