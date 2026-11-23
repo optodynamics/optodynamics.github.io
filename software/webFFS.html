@@ -580,6 +580,9 @@
       margin-top: 14px;
     }
 
+    .save-actions { display: grid; gap: 8px; }
+    .save-actions .tool-button { font-weight: 400; }
+
     .middle-monitor .chunks-panel { border: 0; border-radius: 0; box-shadow: none; background: transparent; margin-top: 7px; }
     .middle-monitor .chunks-panel .panel-heading { display: none; }
     .middle-monitor .chunks-panel .panel-body { padding: 0; }
@@ -1609,6 +1612,16 @@
           <div class="panel-heading"><h2 id="notesHeading">Notes</h2></div>
           <div class="panel-body"><textarea id="notesInput" class="notes-area" aria-label="Session notes" placeholder="Notes for this FFS session…"></textarea></div>
         </section>
+        <section class="panel" aria-labelledby="saveAsHeading">
+          <div class="panel-heading"><h2 id="saveAsHeading">Save as</h2></div>
+          <div class="panel-body save-actions">
+            <button class="tool-button" type="button" data-python-handler="save_session">Analysis session (.ffs)</button>
+            <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Jupyter Notebook</button>
+            <button class="tool-button" type="button" data-python-handler="plot_jupyter_notebook">Jupyter Notebook with plots</button>
+            <button class="tool-button" type="button" data-python-handler="export_session_xlsx">Excel overview</button>
+            <button class="tool-button" type="button" data-python-handler="export_corr_xlsx">Excel current correlation</button>
+          </div>
+        </section>
       </aside>
 
     <section class="desktop-strip" aria-label="FFS file navigation and metadata">
@@ -1835,13 +1848,8 @@
     <details class="command-drawer">
       <summary>Desktop menu commands</summary>
       <div class="command-grid">
-        <button class="tool-button" type="button" data-python-handler="save_session">Save session (.ffs)</button>
         <button class="tool-button" type="button" data-python-handler="use_current_fit_as_experimental_data">Copy current fit as data</button>
         <button class="tool-button" type="button" data-python-handler="copy_current_correlation">Copy current correlation</button>
-        <button class="tool-button" type="button" data-python-handler="create_jupyter_notebook">Notebook: redo analysis</button>
-        <button class="tool-button" type="button" data-python-handler="plot_jupyter_notebook">Notebook: read saved session</button>
-        <button class="tool-button" type="button" data-python-handler="export_session_xlsx">Export results to Excel</button>
-        <button class="tool-button" type="button" data-python-handler="export_corr_xlsx">Export correlation to Excel</button>
         <button class="tool-button" type="button" data-python-handler="difflaw_change">Refresh diffusion-law plot</button>
       </div>
     </details>
@@ -8530,7 +8538,7 @@ def browser_action_catalog():
           {selector: ".chunks-panel", title: "Inspect chunks", text: "Select a chunk to inspect it in the time trace and correlation plot. Turn bad chunks off individually, filter them automatically, or use all chunks."},
           {selector: '[aria-labelledby="fitControlsHeading"]', title: "Fit the correlation", text: "Choose a model, starting values, fit range and which parameters to fit. New fit uses the average of the enabled chunks."},
           {selector: '[aria-labelledby="diffusionControlsHeading"]', title: "Diffusion law", text: "Enter beam-waist values and update the diffusion analysis to plot fitted diffusion time against beam waist squared."},
-          {selector: '[data-python-handler="save_session"]', title: "Save the session", text: "Use Save session (.ffs) in Desktop menu commands to download the images, correlations, chunk settings and fits. Raw measurement files are not embedded.", openDrawer: true}
+          {selector: '[data-python-handler="save_session"]', title: "Save the session", text: "Use Analysis session (.ffs) in Save as to download the images, correlations, chunk settings and fits. Raw measurement files are not embedded."}
         ];
         const tourSpot = document.createElement("div");
         const tourCard = document.createElement("section");
