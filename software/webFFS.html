@@ -1264,6 +1264,15 @@
       text-align: center;
     }
 
+    body.data-file-dragging::after {
+      content: "Drop a data file to add it";
+      position: fixed; inset: 14px; z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+      border: 3px dashed #359cb3; border-radius: 14px;
+      background: rgba(19, 54, 68, .8); color: white;
+      font: 500 1.3rem system-ui, sans-serif; pointer-events: none;
+    }
+
     #pchOptimizationControl { margin-top: 8px; }
     #pchOptimization { font-weight: normal; }
 
@@ -2144,14 +2153,70 @@ def _count_dataset_shape(input_path, dataset_path):
         dataset = handle[dataset_path]
         if not isinstance(dataset, h5py.Dataset):
             raise ValueError("The selected H5 path is not a dataset.")
-        if dataset.ndim != 2:
-            raise ValueError("Choose a 2D numeric count dataset: time bins × detector channels.")
+        if dataset.ndim < 2:
+            raise ValueError("Choose a numeric count dataset with time dimensions and a final detector-channel dimension.")
         if not _is_numeric_dtype(dataset.dtype) or np.issubdtype(dataset.dtype, np.complexfloating):
             raise ValueError("Choose a real-valued numeric count dataset.")
-        rows, channels = (int(dataset.shape[0]), int(dataset.shape[1]))
+        rows, channels = (math.prod(int(size) for size in dataset.shape[:-1]), int(dataset.shape[-1]))
     if rows < 8 or channels < 1:
         raise ValueError("At least 8 time bins and one detector channel are required.")
     return rows, channels
+
+
+def _read_flat_count_rows(dataset, start, stop, dtype=None):
+    """Read a contiguous C-order range of time rows without loading the dataset."""
+    shape = tuple(int(size) for size in dataset.shape)
+    total = math.prod(shape[:-1])
+    start, stop = max(0, int(start)), min(total, int(stop))
+    if stop < start: stop = start
+    result = np.empty((stop - start, shape[-1]), dtype=dtype or dataset.dtype)
+    if dataset.ndim == 2:
+        result[:] = dataset[start:stop, :]
+        return result
+    # Read the largest aligned rectangular slab that fits the requested range.
+    # This preserves C-order while avoiding one read per row when trailing
+    # dimensions are singletons.
+    position = start
+    while position < stop:
+        indices = np.unravel_index(position, shape[:-1], order='C')
+        for axis in range(len(shape) - 1):
+            stride = math.prod(shape[axis+1:-1])
+            if position % stride == 0 and stop - position >= stride:
+                count = min(shape[axis] - int(indices[axis]), (stop - position) // stride)
+                length = count * stride
+                selection = (tuple(int(index) for index in indices[:axis]) +
+                    (slice(int(indices[axis]), int(indices[axis]) + count),) +
+                    (slice(None),) * (len(shape) - axis - 1))
+                block = np.asarray(dataset[selection]).reshape(length, shape[-1])
+                result[position-start:position-start+length] = block
+                break
+        position += length
+    return result
+
+
+def _native_count_reader(input_path, dataset_path):
+    """Temporarily provide the package correlation routine with flat H5 chunks."""
+    from contextlib import contextmanager
+    import brighteyes_ffs.fcs.fcs2corr as module
+    import os
+    @contextmanager
+    def use_reader():
+        original = module.file_to_fcs_count
+        def reader(fname, datatype=np.uint16, n_points=-1, n_offset=0, h5dataset=None, print_info=True):
+            if os.path.abspath(str(fname)) != os.path.abspath(str(input_path)):
+                return original(fname, datatype, n_points, n_offset, h5dataset=h5dataset, print_info=print_info)
+            with h5py.File(input_path, 'r') as handle:
+                dataset = handle[dataset_path]
+                total = math.prod(int(size) for size in dataset.shape[:-1])
+                start = max(0, int(n_offset))
+                stop = total if int(n_points) == -1 else min(total, start + int(n_points))
+                return _read_flat_count_rows(dataset, start, stop)
+        module.file_to_fcs_count = reader
+        try:
+            yield
+        finally:
+            module.file_to_fcs_count = original
+    return use_reader()
 
 
 def _spot_variation_request(detector_type):
@@ -2848,10 +2913,8 @@ def _format_browser_rows(columns, rows, maximum_rows=12, total_rows=None):
 def _count_rows_preview(input_path, dataset_path, maximum_rows=12):
     with h5py.File(input_path, "r") as handle:
         dataset = handle[dataset_path]
-        total_rows = dataset.shape[0]
-        data = np.asarray(dataset[:maximum_rows])
-    if data.ndim != 2:
-        data = data.reshape((data.shape[0], -1))
+        total_rows = math.prod(int(size) for size in dataset.shape[:-1])
+        data = _read_flat_count_rows(dataset, 0, min(total_rows, maximum_rows))
     return _format_browser_rows(
         ["channel " + str(index) for index in range(data.shape[1])], data, maximum_rows, total_rows
     )
@@ -2906,7 +2969,7 @@ def _tcspc_rows_preview(input_path, channel, maximum_rows=12):
     return _format_browser_rows(columns[:arrivals.shape[1]], arrivals, maximum_rows, total_rows)
 
 
-def calculate_pch_native(input_path, values, data_kind, metadata=None, split=None):
+def calculate_pch_native(input_path, values, data_kind, metadata=None, split=None, dataset_path=None):
     """Use the same PCH entry points and bin-width units as the desktop."""
     if values.get('correlationType', 'sv_fcs') != 'sv_fcs':
         raise ValueError('Photon counting histograms currently require the spot-variation detector sums.')
@@ -2938,34 +3001,36 @@ def calculate_pch_native(input_path, values, data_kind, metadata=None, split=Non
         if rows > 0:
             effective_metadata.duration = rows * dwell_us * 1e-6
         # fcs2corr's binsize is a count of source samples, not microseconds.
-        corrs, _ = fcs_load_and_corr_split(input_path, list_of_g=list_of_g, accuracy=30,
-            binsize=int(rounded_bins), split=chunk_s, time_trace=True, metadata=effective_metadata,
-            list_of_g_out=elements, algorithm='pch')
+        with _native_count_reader(input_path, dataset_path):
+            corrs, _ = fcs_load_and_corr_split(input_path, list_of_g=list_of_g, accuracy=30,
+                binsize=int(rounded_bins), split=chunk_s, time_trace=True, metadata=effective_metadata,
+                list_of_g_out=elements, algorithm='pch')
     result = _native_correlations_to_result(corrs, 'Photon counting histogram')
     result['plot_type'] = 'pch'
     result['bin_width_us'] = bin_us
     return result, corrs
 
 
-def calculate_time_trace_native(input_path, values, metadata=None, split=None):
+def calculate_time_trace_native(input_path, values, metadata=None, split=None, dataset_path=None):
     """Desktop-style binned-count route: ``fcs_load_and_corr_split``."""
     from brighteyes_ffs.fcs.fcs2corr import fcs_load_and_corr_split
     list_of_g, elements, average = _desktop_correlation_request(values)
     algorithm = str(values.get("algorithm") or "multipletau")
     if list_of_g and list_of_g[0] == "crossAll":
         algorithm = "sparse_matrices"
-    corrs, _ = fcs_load_and_corr_split(
-        input_path,
-        list_of_g=list_of_g,
-        accuracy=_browser_int(values.get("lagInput"), 16),
-        split=(split if split is not None else _browser_number(values.get("chunkSizeInput"), 1.0)),
-        time_trace=True,
-        metadata=metadata,
-        list_of_g_out=elements,
-        averaging=average,
-        algorithm=algorithm,
-        print_info=False,
-    )
+    with _native_count_reader(input_path, dataset_path):
+        corrs, _ = fcs_load_and_corr_split(
+            input_path,
+            list_of_g=list_of_g,
+            accuracy=_browser_int(values.get("lagInput"), 16),
+            split=(split if split is not None else _browser_number(values.get("chunkSizeInput"), 1.0)),
+            time_trace=True,
+            metadata=metadata,
+            list_of_g_out=elements,
+            averaging=average,
+            algorithm=algorithm,
+            print_info=False,
+        )
     return _native_correlations_to_result(corrs, "Binned time-trace correlation"), corrs
 
 
@@ -2991,7 +3056,7 @@ def _stream_traces(input_path, dataset_path, selections, block_rows=15625, start
         for start in range(start_row, stop_row, block_rows):
             stop = min(stop_row, start + block_rows)
             # A block is at most about 6 MB for the supplied 49-channel file.
-            block = np.asarray(dataset[start:stop, :], dtype=np.float64)
+            block = _read_flat_count_rows(dataset, start, stop, dtype=np.float64)
             if not np.all(np.isfinite(block)):
                 raise ValueError("The selected count dataset contains NaN or infinite values.")
             for trace, selection in zip(traces, selections):
@@ -3048,7 +3113,7 @@ def _stream_chunk_means(input_path, dataset_path, bins_per_chunk, block_rows=156
         dataset = handle[dataset_path]
         for start in range(0, rows, max(1, int(block_rows))):
             stop = min(rows, start + max(1, int(block_rows)))
-            totals = np.sum(np.asarray(dataset[start:stop, :], dtype=np.float64), axis=1)
+            totals = np.sum(_read_flat_count_rows(dataset, start, stop, dtype=np.float64), axis=1)
             chunk_index = np.arange(start, stop, dtype=np.int64) // bins_per_chunk
             np.add.at(sums, chunk_index, totals)
             np.add.at(counts, chunk_index, 1)
@@ -3065,7 +3130,7 @@ def preview_count_data(input_path, dataset_path, max_points=800, dwell_us=1.0):
     with h5py.File(input_path, "r") as handle:
         dataset = handle[dataset_path]
         for start in starts:
-            samples.append(np.asarray(dataset[int(start):int(start) + rows_per_block, :], dtype=np.float64))
+            samples.append(_read_flat_count_rows(dataset, int(start), int(start) + rows_per_block, dtype=np.float64))
     preview = np.concatenate(samples, axis=0)
     return json.dumps({
         "step": max(1, int(math.ceil(rows / len(preview)))),
@@ -3093,7 +3158,7 @@ def compressed_count_trace(input_path, dataset_path, max_rows=10000, block_rows=
         dataset = handle[dataset_path]
         for start in range(0, rows, max(1, int(block_rows))):
             stop = min(rows, start + max(1, int(block_rows)))
-            values = np.asarray(dataset[start:stop, :], dtype=np.float64)
+            values = _read_flat_count_rows(dataset, start, stop, dtype=np.float64)
             groups = np.arange(start, stop, dtype=np.int64) // bin_factor
             np.add.at(reduced, groups, values)
     return reduced
@@ -5260,7 +5325,7 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
     data_kind = getattr(ffs_file, "browser_data_kind", None) or "time_trace"
     if str(values.get('algorithm') or '') == 'pch':
         split = _browser_native_split_size(ffs_file, values) if data_kind == 'time_trace' else None
-        result, native_corrs = calculate_pch_native(ffs_file.browser_input_path, values, data_kind, ffs_file.metadata, split)
+        result, native_corrs = calculate_pch_native(ffs_file.browser_input_path, values, data_kind, ffs_file.metadata, split, getattr(ffs_file, 'browser_dataset_path', None))
         _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=native_corrs)
         return result
     if data_kind == "tcspc":
@@ -5285,6 +5350,7 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
                 values,
                 metadata=ffs_file.metadata,
                 split=package_split,
+                dataset_path=dataset_path,
             )
             rows, channels = _count_dataset_shape(ffs_file.browser_input_path, dataset_path)
             _browser_update_file_metadata_from_shape(ffs_file, rows, channels, dwell_us)
@@ -5386,7 +5452,7 @@ def browser_worker_calculate(job_json, input_path):
             setattr(metadata, key, value)
         holder = SimpleNamespace(metadata=metadata, browser_dataset_shape=job.get('dataset_shape'))
         split = _browser_native_split_size(holder, values)
-        result, native = calculate_time_trace_native(input_path, values, metadata=metadata, split=split)
+        result, native = calculate_time_trace_native(input_path, values, metadata=metadata, split=split, dataset_path=job['dataset_path'])
     else:
         if values.get('correlationType') in ('all_autocorr', 'all_cross'):
             raise ValueError('For binned time traces, choose Multipletau or Wiener-Khinchin for this correlation mode.')
@@ -9013,8 +9079,7 @@ def browser_action_catalog():
             setStatus('error', 'Could not remove the selection: ' + describeError(error));
           }
         });
-        fileInput.addEventListener("change", async function () {
-          const file = fileInput.files[0];
+        async function loadSelectedDataFile(file) {
           if (!file) return;
           if (pendingRawReload && pendingRawReload.key !== activeFileKey()) {
             pendingRawReload = null; fileInput.value = "";
@@ -9071,6 +9136,44 @@ def browser_action_catalog():
             pendingRawReload = null;
             fileInput.value = "";
           }
+        }
+        fileInput.addEventListener("change", function () { loadSelectedDataFile(fileInput.files[0]); });
+        let dataDropInProgress = false;
+        const isFileDrag = function (event) { return event.dataTransfer && Array.from(event.dataTransfer.types || []).includes('Files'); };
+        document.addEventListener('dragover', function (event) {
+          if (!isFileDrag(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          document.body.classList.add('data-file-dragging');
+        });
+        document.addEventListener('dragleave', function (event) {
+          if (!event.relatedTarget || event.relatedTarget === document.documentElement) document.body.classList.remove('data-file-dragging');
+        });
+        document.addEventListener('drop', async function (event) {
+          if (!isFileDrag(event)) return;
+          event.preventDefault();
+          document.body.classList.remove('data-file-dragging');
+          const files = Array.from(event.dataTransfer.files || []);
+          if (files.length !== 1 || !/\.(h5|hdf5|ptu|bin|mat)$/i.test(files[0].name)) {
+            setStatus('error', 'Drop one data file (.h5, .hdf5, .ptu, .bin, or .mat).'); return;
+          }
+          if (!window.webFFSPython) { setStatus('error', 'Please wait until browser Python has finished loading.'); return; }
+          if (dataDropInProgress) { setStatus('error', 'A data file is already being loaded.'); return; }
+          dataDropInProgress = true;
+          dismissExample();
+          pendingRawReload = null;
+          try {
+            // Match New file's pending-index workflow without opening a picker.
+            const image = activeView && activeView.images && activeView.images[activeView.active_image];
+            const index = image && Array.isArray(image.files) ? image.files.length : 0;
+            const response = await dispatchPythonHandler('activate_ffs_file', {button_data: {fileIndex: index}, values: formValues()});
+            if (response.error || response.browser_action !== 'request_data_file') {
+              throw new Error(response.message || response.error || 'Could not prepare a new data file.');
+            }
+            await loadSelectedDataFile(files[0]);
+          } catch (error) {
+            setStatus('error', 'Could not add dropped file: ' + describeError(error));
+          } finally { dataDropInProgress = false; }
         });
         fileInput.addEventListener("cancel", function () { pendingRawReload = null; });
         binMetadataInput.addEventListener("cancel", function () {
