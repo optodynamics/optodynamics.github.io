@@ -7376,7 +7376,7 @@ def browser_action_catalog():
         nextButton.setAttribute('aria-label', nextButton.title);
         byId("imageCounter").textContent = "Image " + (activeImage ? Number(view.active_image) + 1 : 0) + " of " + imageCount;
         preview.replaceChildren();
-        if (!activeImage) {
+        if (!activeImage || activeImage.name === 'no_image_added') {
           drawPlaceholderCell(preview);
           button.textContent = "Open image";
           button.title = "Open image";
@@ -7414,9 +7414,10 @@ def browser_action_catalog():
             context.putImageData(raster, 0, 0);
             (activeImage.files || []).forEach(function (file, index) {
               const coords = file && file.metadata && file.metadata.coords;
+              if (!Array.isArray(coords) || coords.length < 2 || coords[0] == null || coords[1] == null) return;
               const y = coords && Number(coords[0]);
               const x = coords && Number(coords[1]);
-              if (!Number.isFinite(x) || !Number.isFinite(y) || imageWidth <= 0 || imageHeight <= 0) return;
+              if (!Number.isFinite(x) || !Number.isFinite(y) || imageWidth <= 0 || imageHeight <= 0 || x < 0 || y < 0 || x >= imageWidth || y >= imageHeight) return;
               const px = x * displayWidth / imageWidth;
               const py = y * displayHeight / imageHeight;
               const selected = index === (hoveredFileIndex === null ? activeImage.active_file : hoveredFileIndex);
@@ -7466,29 +7467,13 @@ def browser_action_catalog():
 
       function drawPlaceholderCell(container) {
         const canvas = document.createElement("canvas");
-        canvas.width = 200;
-        canvas.height = 200;
+        canvas.width = 5;
+        canvas.height = 5;
         canvas.className = "image-coordinate-preview";
-        canvas.setAttribute("aria-label", "Illustrative cell image placeholder");
+        canvas.setAttribute("aria-label", "Empty 5 by 5 black image");
         const context = canvas.getContext("2d");
-        // Empty image pixels are deliberately black, just as zero-valued
-        // microscopy background pixels would be.
         context.fillStyle = "#000";
         context.fillRect(0, 0, canvas.width, canvas.height);
-        context.fillStyle = "#d85b48";
-        context.beginPath();
-        context.ellipse(99, 103, 79, 62, -.33, 0, Math.PI * 2);
-        context.fill();
-        context.strokeStyle = "#ffba68";
-        context.lineWidth = 2.4;
-        context.stroke();
-        context.fillStyle = "#70225e";
-        context.beginPath();
-        context.arc(116, 87, 26, 0, Math.PI * 2);
-        context.fill();
-        context.strokeStyle = "#d884a7";
-        context.lineWidth = 1;
-        context.stroke();
         container.appendChild(canvas);
       }
 
