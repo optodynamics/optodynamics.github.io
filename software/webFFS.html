@@ -4230,8 +4230,8 @@ def _browser_view():
             "files": [_browser_file_view(ffs_file, file_index)
                       for file_index, ffs_file in enumerate(image.ffs_list)],
         }
-        # Send only the currently displayed image's small 8-bit preview.  The
-        # original array remains in ``FFSimage.image`` and is exported intact.
+        # Send the active image's full-resolution 8-bit display mapping.
+        # The original array remains in ``FFSimage.image`` and is exported intact.
         if image_index == active_image_index:
             image_view["image_preview"] = getattr(image, "browser_image_preview", None)
         images.append(image_view)
@@ -4839,23 +4839,24 @@ def _h5_image_dataset(handle):
     raise ValueError("Could not identify an image dataset. Add a top-level dataset named 'data'.")
 
 
-def _browser_image_preview(image_data, maximum_side=256):
-    """Create a compact grayscale display copy; the full image stays in FFSlib."""
+def _browser_image_preview(image_data):
+    """Map every original pixel to 8-bit display intensity without resizing."""
     height, width = image_data.shape
-    stride = max(1, int(math.ceil(max(height, width) / maximum_side)))
-    reduced = np.asarray(image_data[::stride, ::stride], dtype=float)
-    finite = reduced[np.isfinite(reduced)]
+    display_data = np.asarray(image_data, dtype=float)
+    finite = display_data[np.isfinite(display_data)]
     if finite.size:
         low, high = np.percentile(finite, (1, 99))
         if not high > low:
             low, high = float(np.min(finite)), float(np.max(finite))
-        pixels = np.clip((np.nan_to_num(reduced, nan=low) - low) * 255.0 / max(high - low, 1e-12), 0, 255).astype(np.uint8)
+        pixels = np.clip((np.nan_to_num(display_data, nan=low) - low) * 255.0 / max(high - low, 1e-12), 0, 255).astype(np.uint8)
     else:
-        pixels = np.zeros(reduced.shape, dtype=np.uint8)
+        pixels = np.zeros(display_data.shape, dtype=np.uint8)
     return {
         "shape": [int(height), int(width)],
         "display_shape": [int(pixels.shape[0]), int(pixels.shape[1])],
-        "pixels": pixels.tolist(),
+        # Base64 carries the exact display bytes with less JSON overhead than
+        # a nested array of numbers; it does not resize the image.
+        "pixels_base64": base64.b64encode(pixels.tobytes(order='C')).decode('ascii'),
     }
 
 
@@ -4887,8 +4888,7 @@ def browser_load_image_file(input_path, fname, replace=False):
         ffslib.add_image(image_data, str(fname))
         ffslib.active_image = ffslib.num_images - 1
         image = _browser_current_image()
-    # ``image.image`` retains the full array for native .ffs export.  The
-    # small preview is browser-only and therefore does not alter that format.
+    # ``image.image`` retains the original values for native .ffs export.
     image.browser_image_preview = _browser_image_preview(image_data)
     return _browser_response(
         "Loaded image " + str(fname) + " and stored it in the FFS session.",
@@ -7452,13 +7452,14 @@ def browser_action_catalog():
         button.textContent = shortImageButtonLabel(fullImageName);
         button.title = fullImageName;
         const imagePreview = activeImage.image_preview;
-        if (imagePreview && Array.isArray(imagePreview.pixels) && imagePreview.display_shape) {
+        if (imagePreview && (typeof imagePreview.pixels_base64 === 'string' || Array.isArray(imagePreview.pixels)) && imagePreview.display_shape) {
           const displayHeight = Number(imagePreview.display_shape[0]);
           const displayWidth = Number(imagePreview.display_shape[1]);
           const imageHeight = Number(imagePreview.shape && imagePreview.shape[0]);
           const imageWidth = Number(imagePreview.shape && imagePreview.shape[1]);
           const pixels = imagePreview.pixels;
-          if (displayHeight > 0 && displayWidth > 0 && pixels.length === displayHeight) {
+          const encodedPixels = typeof imagePreview.pixels_base64 === 'string' ? atob(imagePreview.pixels_base64) : null;
+          if (displayHeight > 0 && displayWidth > 0 && (encodedPixels ? encodedPixels.length === displayHeight * displayWidth : pixels.length === displayHeight)) {
             const canvas = document.createElement("canvas");
             canvas.width = displayWidth;
             canvas.height = displayHeight;
@@ -7468,7 +7469,7 @@ def browser_action_catalog():
             const raster = context.createImageData(displayWidth, displayHeight);
             for (let y = 0; y < displayHeight; y += 1) {
               for (let x = 0; x < displayWidth; x += 1) {
-                const value = Number(pixels[y][x]) || 0;
+                const value = encodedPixels ? encodedPixels.charCodeAt(y * displayWidth + x) : Number(pixels[y][x]) || 0;
                 const offset = 4 * (y * displayWidth + x);
                 const color = infernoColor(value / 255);
                 raster.data[offset] = color[0];
@@ -7491,14 +7492,37 @@ def browser_action_catalog():
               context.strokeStyle = selected ? "#42e8d7" : "#ffffff";
               context.fillStyle = selected ? "#42e8d7" : "#ffffff";
               context.lineWidth = Math.max(1, Math.min(displayWidth, displayHeight) / 110);
+              const radius = Math.max(3, Math.min(displayWidth, displayHeight) / 28);
               context.beginPath();
-              context.arc(px, py, Math.max(3, Math.min(displayWidth, displayHeight) / 28), 0, Math.PI * 2);
+              context.arc(px, py, radius, 0, Math.PI * 2);
               context.stroke();
-              context.font = "bold " + Math.max(9, Math.min(displayWidth, displayHeight) / 18) + "px system-ui";
-              context.fillText(String(index + 1), px + 5, py - 5);
+              const fontSize = Math.max(9, Math.min(displayWidth, displayHeight) / 18);
+              const label = String(index + 1), gap = Math.max(2, context.lineWidth);
+              context.font = "bold " + fontSize + "px system-ui";
+              context.textBaseline = 'middle';
+              const labelWidth = context.measureText(label).width;
+              // Anchor outside the circumference, switching sides near edges.
+              if (px + radius + gap + labelWidth <= displayWidth) {
+                context.textAlign = 'left';
+                context.fillText(label, px + radius + gap, Math.max(fontSize / 2, Math.min(displayHeight - fontSize / 2, py)));
+              } else if (px - radius - gap - labelWidth >= 0) {
+                context.textAlign = 'right';
+                context.fillText(label, px - radius - gap, Math.max(fontSize / 2, Math.min(displayHeight - fontSize / 2, py)));
+              } else {
+                context.textAlign = 'center';
+                const above = py - radius - gap - fontSize / 2;
+                const below = py + radius + gap + fontSize / 2;
+                context.fillText(label, Math.max(labelWidth / 2, Math.min(displayWidth - labelWidth / 2, px)), above >= fontSize / 2 ? above : below);
+              }
               context.restore();
             });
             preview.appendChild(canvas);
+            // The saved desktop placeholder can also have an ordinary name.
+            // Do not magnify a 5×5 image whose displayed pixels are all zero.
+            const emptyFiveByFive = imageHeight === 5 && imageWidth === 5 &&
+              (encodedPixels ? Array.from(encodedPixels).every(function (value) { return value.charCodeAt(0) === 0; }) :
+                pixels.every(function (row) { return row.every(function (value) { return Number(value) === 0; }); }));
+            if (!emptyFiveByFive) enableImageMagnifier(canvas);
             return;
           }
         }
@@ -7512,6 +7536,38 @@ def browser_action_catalog():
         } else {
           drawPlaceholderCell(preview);
         }
+      }
+
+      function enableImageMagnifier(canvas) {
+        // Keep an unmodified copy, including measurement-position markers.
+        // Redrawing the same canvas keeps the zoom exactly inside the original
+        // image, with its original shape and rounded corners.
+        const source = document.createElement('canvas');
+        source.width = canvas.width; source.height = canvas.height;
+        source.getContext('2d').drawImage(canvas, 0, 0);
+        const context = canvas.getContext('2d');
+        const zoom = 3;
+        const restore = function () { context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(source, 0, 0); };
+        canvas.style.cursor = 'zoom-in';
+        canvas.addEventListener('pointermove', function (event) {
+          if (event.pointerType === 'touch') return;
+          const rect = canvas.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          // Account for object-fit: contain when the image is not square.
+          const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+          const shownWidth = canvas.width * scale, shownHeight = canvas.height * scale;
+          const left = rect.left + (rect.width - shownWidth) / 2;
+          const top = rect.top + (rect.height - shownHeight) / 2;
+          const x = (event.clientX - left) / shownWidth, y = (event.clientY - top) / shownHeight;
+          if (x < 0 || x > 1 || y < 0 || y > 1) { restore(); return; }
+          const cropWidth = canvas.width / zoom, cropHeight = canvas.height / zoom;
+          const sx = Math.max(0, Math.min(canvas.width - cropWidth, x * canvas.width - cropWidth / 2));
+          const sy = Math.max(0, Math.min(canvas.height - cropHeight, y * canvas.height - cropHeight / 2));
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(source, sx, sy, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+        });
+        canvas.addEventListener('pointerleave', restore);
+        canvas.addEventListener('pointercancel', restore);
       }
 
       function shortImageButtonLabel(label) {
