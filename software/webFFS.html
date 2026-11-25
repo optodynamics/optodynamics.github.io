@@ -8089,6 +8089,21 @@ def browser_action_catalog():
         // the correlation amplitude readable without connecting the samples.
         context.font = "10px system-ui";
         context.lineWidth = 1;
+        // Minor log divisions (2–9 within each decade) remain visible when
+        // zoomed into a partial decade, in both the plot and residual panel.
+        context.save();
+        context.strokeStyle = palette.grid;
+        context.globalAlpha = 0.4;
+        context.lineWidth = 0.7;
+        for (let decade = Math.floor(minX); decade <= Math.floor(maxX); decade += 1) {
+          for (let multiple = 2; multiple <= 9; multiple += 1) {
+            const position = decade + Math.log10(multiple);
+            if (position < minX || position > maxX) continue;
+            const x = xAt(position);
+            context.beginPath(); context.moveTo(x, top); context.lineTo(x, residualBottom); context.stroke();
+          }
+        }
+        context.restore();
         for (let logTau = Math.ceil(minX); logTau <= Math.floor(maxX); logTau += 1) {
           const x = xAt(logTau);
           context.strokeStyle = palette.grid;
