@@ -605,6 +605,8 @@
     /* Match the drawing buffer height so the canvas is not vertically scaled
        by the generic canvas rule (which also distorts its text). */
     #diffusionCanvas { height: 230px; }
+    #fingerprintQuantity { margin-top: 8px; height: 39px; min-height: 39px; padding: 8px 10px; font-weight: 400; font-size: .75rem; }
+    #fingerprintQuantity[hidden] { display: none; }
 
     .placeholder-note {
       margin: 11px 0 0;
@@ -1776,7 +1778,7 @@
       </section>
       <section class="panel" aria-labelledby="fingerprintHeading">
         <div class="panel-heading"><h2 id="fingerprintHeading">Fingerprint</h2></div>
-        <div class="panel-body"><canvas id="fingerprintCanvas" class="fingerprint-placeholder" aria-label="Detector fingerprint"></canvas><div class="fingerprint-scale" aria-label="Fingerprint colour scale"><div id="fingerprintScaleBar" class="fingerprint-scale-bar"></div><div class="fingerprint-scale-labels"><span id="fingerprintScaleMin">—</span><span id="fingerprintScaleMax">—</span></div></div></div>
+        <div class="panel-body"><canvas id="fingerprintCanvas" class="fingerprint-placeholder" aria-label="Detector fingerprint"></canvas><div class="fingerprint-scale" aria-label="Fingerprint colour scale"><div id="fingerprintScaleBar" class="fingerprint-scale-bar"></div><div class="fingerprint-scale-labels"><span id="fingerprintScaleMin">—</span><span id="fingerprintScaleMax">—</span></div></div><select id="fingerprintQuantity" aria-label="Fingerprint quantity" hidden><option value="">Photon counts</option></select></div>
       </section>
     </section>
 
@@ -2555,7 +2557,7 @@ def calculate_tcspc_correlation(input_path, values):
     import gc
     gc.collect()
     try:
-        corrs, _ = atimes_file_2_corr(
+        corrs, returned_trace = atimes_file_2_corr(
             input_path,
             list_of_g=list_of_g,
             accuracy=_browser_int(values.get("lagInput"), 16),
@@ -2581,6 +2583,7 @@ def calculate_tcspc_correlation(input_path, values):
             duration_s=duration_s,
         ),
         corrs,
+        returned_trace,
     )
 
 
@@ -2980,7 +2983,7 @@ def calculate_pch_native(input_path, values, data_kind, metadata=None, split=Non
     chunk_s = split if split is not None else _browser_number(values.get('chunkSizeInput'), 1.0)
     if data_kind == 'tcspc':
         from brighteyes_ffs.pch.atimes2pch import atimes_file_2_pch
-        corrs, _ = atimes_file_2_pch(input_path, list_of_pch=list_of_g, split=chunk_s,
+        corrs, returned_trace = atimes_file_2_pch(input_path, list_of_pch=list_of_g, split=chunk_s,
             bin_time=bin_us * 1e-6, normalize=True, time_trace=True,
             list_of_pch_out=elements, sysclk_MHz=240, perform_calib=False, max_k=50)
     else:
@@ -3002,13 +3005,13 @@ def calculate_pch_native(input_path, values, data_kind, metadata=None, split=Non
             effective_metadata.duration = rows * dwell_us * 1e-6
         # fcs2corr's binsize is a count of source samples, not microseconds.
         with _native_count_reader(input_path, dataset_path):
-            corrs, _ = fcs_load_and_corr_split(input_path, list_of_g=list_of_g, accuracy=30,
+            corrs, returned_trace = fcs_load_and_corr_split(input_path, list_of_g=list_of_g, accuracy=30,
                 binsize=int(rounded_bins), split=chunk_s, time_trace=True, metadata=effective_metadata,
                 list_of_g_out=elements, algorithm='pch')
     result = _native_correlations_to_result(corrs, 'Photon counting histogram')
     result['plot_type'] = 'pch'
     result['bin_width_us'] = bin_us
-    return result, corrs
+    return result, corrs, returned_trace
 
 
 def calculate_time_trace_native(input_path, values, metadata=None, split=None, dataset_path=None):
@@ -3019,7 +3022,7 @@ def calculate_time_trace_native(input_path, values, metadata=None, split=None, d
     if list_of_g and list_of_g[0] == "crossAll":
         algorithm = "sparse_matrices"
     with _native_count_reader(input_path, dataset_path):
-        corrs, _ = fcs_load_and_corr_split(
+        corrs, returned_trace = fcs_load_and_corr_split(
             input_path,
             list_of_g=list_of_g,
             accuracy=_browser_int(values.get("lagInput"), 16),
@@ -3031,7 +3034,7 @@ def calculate_time_trace_native(input_path, values, metadata=None, split=None, d
             algorithm=algorithm,
             print_info=False,
         )
-    return _native_correlations_to_result(corrs, "Binned time-trace correlation"), corrs
+    return _native_correlations_to_result(corrs, "Binned time-trace correlation"), corrs, returned_trace
 
 
 def _stream_traces(input_path, dataset_path, selections, block_rows=15625, start_row=0, stop_row=None):
@@ -5319,21 +5322,59 @@ def add_corr_to_joblist(payload=None):
     )
 
 
+def _browser_use_returned_trace(ffs_file, returned_trace, data_kind):
+    """Display and save the package's binned detector trace after analysis."""
+    if returned_trace is None:
+        return False
+    trace = np.asarray(returned_trace)
+    if trace.ndim != 2 or not trace.shape[0] or not trace.shape[1] or not _is_numeric_dtype(trace.dtype) or np.iscomplexobj(trace):
+        return False
+    trace = np.asarray(trace, dtype=float)
+    if not np.all(np.isfinite(trace)):
+        return False
+    if data_kind == 'time_trace' and len(trace) == 1000:
+        # The desktop package preallocates 1000 rows and can leave a few
+        # trailing zero rows. Use the desktop's same trimming convention.
+        from brighteyes_ffs.fcs_gui.timetrace_end import timetrace_end
+        end = int(timetrace_end(trace))
+        if end > 0: trace = trace[:end]
+    if data_kind == 'tcspc':
+        channels = list(getattr(ffs_file, 'browser_tcspc_channels', []) or [])
+        # Some package readers return compact columns for det9…det31, etc.
+        # Put them back at their actual detector numbers for the fingerprint.
+        if channels and len(channels) == trace.shape[1] and channels != list(range(len(channels))):
+            expanded = np.zeros((len(trace), max(25, max(channels) + 1)), dtype=float)
+            expanded[:, channels] = trace
+            trace = expanded
+    duration = _browser_number(getattr(ffs_file.metadata, 'duration', None), None)
+    if duration is None or duration <= 0:
+        return False
+    preview = dict(getattr(ffs_file, 'browser_preview', {}) or {})
+    totals = np.sum(trace, axis=0, dtype=np.float64)
+    preview.update(traces=trace.T.tolist(), fingerprint=totals.tolist(), step=1, dwell_us=duration * 1e6 / len(trace), duration_s=duration)
+    ffs_file.timetrace = trace
+    ffs_file.airy = totals
+    ffs_file.browser_preview = preview
+    return True
+
+
 def _browser_calculate_file(ffs_file, values, analysis=None):
     if ffs_file is None or not getattr(ffs_file, "browser_input_path", None):
         raise ValueError("Load a time-trace or TCSPC data file first.")
     data_kind = getattr(ffs_file, "browser_data_kind", None) or "time_trace"
     if str(values.get('algorithm') or '') == 'pch':
         split = _browser_native_split_size(ffs_file, values) if data_kind == 'time_trace' else None
-        result, native_corrs = calculate_pch_native(ffs_file.browser_input_path, values, data_kind, ffs_file.metadata, split, getattr(ffs_file, 'browser_dataset_path', None))
+        result, native_corrs, returned_trace = calculate_pch_native(ffs_file.browser_input_path, values, data_kind, ffs_file.metadata, split, getattr(ffs_file, 'browser_dataset_path', None))
         _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=native_corrs)
+        result['trace_unavailable'] = not _browser_use_returned_trace(ffs_file, returned_trace, data_kind)
         return result
     if data_kind == "tcspc":
-        result, native_corrs = calculate_tcspc_correlation(ffs_file.browser_input_path, values)
+        result, native_corrs, returned_trace = calculate_tcspc_correlation(ffs_file.browser_input_path, values)
         duration_s = result.get("duration_s")
         if duration_s is not None:
             ffs_file.metadata.duration = float(duration_s)
         _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=native_corrs)
+        result['trace_unavailable'] = not _browser_use_returned_trace(ffs_file, returned_trace, data_kind)
         return result
     dataset_path = getattr(ffs_file, "browser_dataset_path", None)
     if not dataset_path:
@@ -5345,7 +5386,7 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
     if str(values.get("algorithm") or "multipletau") != "tt2corr":
         try:
             package_split = _browser_native_split_size(ffs_file, values)
-            result, native_corrs = calculate_time_trace_native(
+            result, native_corrs, returned_trace = calculate_time_trace_native(
                 ffs_file.browser_input_path,
                 values,
                 metadata=ffs_file.metadata,
@@ -5355,6 +5396,7 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
             rows, channels = _count_dataset_shape(ffs_file.browser_input_path, dataset_path)
             _browser_update_file_metadata_from_shape(ffs_file, rows, channels, dwell_us)
             _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=native_corrs)
+            result['trace_unavailable'] = not _browser_use_returned_trace(ffs_file, returned_trace, data_kind)
             return result
         except Exception as error:
             raise RuntimeError("The package correlation calculation failed: " + str(error)) from error
@@ -5377,6 +5419,7 @@ def _browser_calculate_file(ffs_file, values, analysis=None):
     rows, channels = _count_dataset_shape(ffs_file.browser_input_path, dataset_path)
     _browser_update_file_metadata_from_shape(ffs_file, rows, channels, dwell_us)
     _browser_result_to_analysis(ffs_file, result, values, analysis=analysis, native_corrs=None)
+    result['trace_unavailable'] = True
     return result
 
 
@@ -5406,7 +5449,8 @@ def add_corr_and_calc(payload=None):
     analysis = _browser_add_analysis(ffs_file, values)
     result = _browser_calculate_file(ffs_file, values, analysis=analysis)
     response = {"result": result, "preview": _browser_analysis_preview(ffs_file, analysis)}
-    return _browser_response("Calculated " + result["mode"] + ".", **response)
+    notice = " The original time-trace preview was kept because this calculation did not return a usable detector trace." if result.get('trace_unavailable') else ""
+    return _browser_response("Calculated " + result["mode"] + "." + notice, **response)
 
 
 def browser_prepare_worker_calculation(payload_json):
@@ -5445,14 +5489,14 @@ def browser_worker_calculate(job_json, input_path):
     values = job['values']
     native = None
     if job['data_kind'] == 'tcspc':
-        result, native = calculate_tcspc_correlation(input_path, values)
+        result, native, _ = calculate_tcspc_correlation(input_path, values)
     elif str(values.get('algorithm') or 'multipletau') != 'tt2corr':
         metadata = FFSmetadata()
         for key, value in job.get('metadata', {}).items():
             setattr(metadata, key, value)
         holder = SimpleNamespace(metadata=metadata, browser_dataset_shape=job.get('dataset_shape'))
         split = _browser_native_split_size(holder, values)
-        result, native = calculate_time_trace_native(input_path, values, metadata=metadata, split=split, dataset_path=job['dataset_path'])
+        result, native, _ = calculate_time_trace_native(input_path, values, metadata=metadata, split=split, dataset_path=job['dataset_path'])
     else:
         if values.get('correlationType') in ('all_autocorr', 'all_cross'):
             raise ValueError('For binned time traces, choose Multipletau or Wiener-Khinchin for this correlation mode.')
@@ -6693,6 +6737,9 @@ def browser_action_catalog():
       let correlationViewport = null;
       let correlationSelection = null;
       let activeView = null;
+      let fingerprintFitValues = {};
+      let fingerprintFitKey = null;
+      let fingerprintCurrentFit = null;
       let hoveredFileIndex = null;
       let lastRenderedFileKey = null;
       let correlationWorker = null;
@@ -7788,6 +7835,52 @@ def browser_action_catalog():
         return { context: context, width: width, height: height };
       }
 
+      function updateFingerprintFitOptions(fit) {
+        const select = byId('fingerprintQuantity');
+        const preview = lastDrawnPreview || {};
+        const photonCounts = Array.isArray(preview.fingerprint) ? preview.fingerprint : [];
+        const isPda = preview.detector_type === 'pi-imaging-pda23';
+        const pixelCount = isPda ? 23 : photonCounts.length;
+        const curves = fit ? (Array.isArray(fit.fits) ? fit.fits : [fit]) : [];
+        const key = fit ? activeFileKey() + ':' + byId('analysisSelect').value : null;
+        const previous = key && key === fingerprintFitKey ? select.value : '';
+        fingerprintFitKey = key;
+        fingerprintFitValues = {};
+        if (pixelCount > 0 && curves.length === pixelCount && curves.every(function (curve) { return curve && curve.parameters; })) {
+          const expected = Array.from({length: pixelCount}, function (_, i) { return isPda ? i + 9 : i; });
+          const detectorOf = function (curve) {
+            const label = String(curve.data || '');
+            let match = /^det(\d+)(?:x(\d+))?$/i.exec(label);
+            if (match && (match[2] === undefined || Number(match[1]) === Number(match[2]))) return Number(match[1]);
+            match = /^x(\d{2})(\d{2})$/i.exec(label);
+            return match && match[1] === match[2] ? Number(match[1]) : null;
+          };
+          const channels = curves.map(detectorOf);
+          // Reorder explicitly labelled autocorrelations by detector number;
+          // otherwise retain the correlation curve order, as in the desktop.
+          const ordered = expected.every(function (channel) { return channels.filter(function (c) { return c === channel; }).length === 1; })
+            ? expected.map(function (channel) { return curves[channels.indexOf(channel)]; }) : curves;
+          Object.keys(ordered[0].parameters).forEach(function (name) {
+            const values = ordered.map(function (curve) { return curve.parameters[name]; });
+            if (values.length === pixelCount && values.every(function (value) { return typeof value === 'number' && Number.isFinite(value); })) {
+              fingerprintFitValues[name] = isPda ? Array(9).fill(null).concat(values) : values;
+            }
+          });
+        }
+        select.replaceChildren();
+        const counts = document.createElement('option'); counts.value = ''; counts.textContent = 'Photon counts'; select.appendChild(counts);
+        Object.keys(fingerprintFitValues).forEach(function (name) {
+          const option = document.createElement('option'); option.value = name; option.textContent = name; select.appendChild(option);
+        });
+        select.hidden = Object.keys(fingerprintFitValues).length === 0;
+        select.value = Object.prototype.hasOwnProperty.call(fingerprintFitValues, previous) ? previous : '';
+        if (lastDrawnPreview) drawPreview(lastDrawnPreview);
+      }
+
+      byId('fingerprintQuantity').addEventListener('change', function () {
+        if (lastDrawnPreview) drawPreview(lastDrawnPreview);
+      });
+
       function drawPreview(preview) {
         if (!preview) return;
         if (preview !== lastDrawnPreview) hoveredDetector = null;
@@ -7905,13 +7998,14 @@ def browser_action_catalog():
         const fingerprintCanvas = byId("fingerprintCanvas");
         const fingerprintSize = Math.max(1, Math.floor(fingerprintCanvas.getBoundingClientRect().width || 128));
         const print = canvasContext(fingerprintCanvas, 128, fingerprintSize);
-        const fingerprint = preview.fingerprint || [];
+        const selectedQuantity = byId('fingerprintQuantity').value;
+        const fingerprint = fingerprintFitValues[selectedQuantity] || preview.fingerprint || [];
         fingerprintHitRegions = [];
         print.context.fillStyle = palette.background;
         print.context.fillRect(0, 0, print.width, print.height);
         const detectorType = preview.detector_type || (fingerprint.length === 49 ? "prism-7x7" : fingerprint.length === 25 ? "custom" : "");
         const pda23 = detectorType === "pi-imaging-pda23";
-        const displayed = pda23 ? fingerprint.slice(9, 32) : fingerprint;
+        const displayed = pda23 ? (fingerprint.length === 23 ? fingerprint : fingerprint.slice(9, 32)) : fingerprint;
         const finiteValues = displayed.filter(function (value) { return typeof value === "number" && Number.isFinite(value); });
         const minimum = finiteValues.length ? Math.min.apply(null, finiteValues) : 0;
         const maximum = finiteValues.length ? Math.max.apply(null, finiteValues) : 0;
@@ -7949,7 +8043,7 @@ def browser_action_catalog():
             const x0 = print.width / 2 - (length - 1) * dx / 2;
             for (let column = 0; column < length; column += 1, index += 1) {
               const x = x0 + column * dx;
-              fingerprintHitRegions.push({ channel: index + 9, x: x, y: y, radius: radius });
+              fingerprintHitRegions.push({ channel: index + 9, value: displayed[index], quantity: selectedQuantity || 'Photon counts', x: x, y: y, radius: radius });
               print.context.fillStyle = colorFor(displayed[index]);
               print.context.beginPath();
               for (let corner = 0; corner < 6; corner += 1) {
@@ -7965,7 +8059,7 @@ def browser_action_catalog():
           const rows = Math.max(1, Math.ceil(fingerprint.length / columns));
           const cellWidth = print.width / columns, cellHeight = print.height / rows;
           fingerprint.forEach(function (value, index) {
-            fingerprintHitRegions.push({ channel: index, x: (index % columns) * cellWidth,
+            fingerprintHitRegions.push({ channel: index, value: value, quantity: selectedQuantity || 'Photon counts', x: (index % columns) * cellWidth,
               y: Math.floor(index / columns) * cellHeight, width: cellWidth, height: cellHeight });
             print.context.fillStyle = colorFor(value);
             print.context.fillRect((index % columns) * cellWidth, Math.floor(index / columns) * cellHeight, cellWidth, cellHeight);
@@ -7987,7 +8081,10 @@ def browser_action_catalog():
         });
         const traces = lastDrawnPreview && (lastDrawnPreview.traces || (lastDrawnPreview.total ? [lastDrawnPreview.total] : []));
         const channel = hit && traces && hit.channel < traces.length ? hit.channel : null;
-        fingerprintHoverCanvas.title = channel === null ? "" : "Detector " + channel;
+        fingerprintHoverCanvas.title = hit
+          ? 'Detector ' + hit.channel + ' - ' + hit.quantity + ' = ' +
+            (typeof hit.value === 'number' && Number.isFinite(hit.value) ? String(hit.value) : 'unavailable')
+          : '';
         if (channel !== hoveredDetector) {
           hoveredDetector = channel;
           if (lastDrawnPreview) drawPreview(lastDrawnPreview);
@@ -8532,8 +8629,15 @@ def browser_action_catalog():
         if (Number.isFinite(Number(response.chunk_count)) && Number(response.chunk_count) > 0) {
           byId("chunkNumberInput").max = String(Number(response.chunk_count) - 1);
         }
-        if (response.result) renderResult(response.result, response.fit);
-        else if (response.clear_result) clearResult();
+        if (response.result) {
+          renderResult(response.result, response.fit);
+          const selectedKey = activeFileKey() + ':' + byId('analysisSelect').value;
+          const currentFit = response.fit || (selectedKey === fingerprintFitKey && byId('analysisSelect').value.startsWith('fit:') ? fingerprintCurrentFit : null);
+          fingerprintCurrentFit = currentFit;
+          updateFingerprintFitOptions(currentFit);
+        } else if (response.clear_result) {
+          clearResult(); fingerprintCurrentFit = null; updateFingerprintFitOptions(null);
+        }
         if (response.image_navigation) {
           // Never leave another image's fit and diffusion parameters visible.
           if (!response.fit) {
